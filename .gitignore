@@ -1,0 +1,114 @@
+# =========================================================
+# Global / OS
+# =========================================================
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.swp
+*.swo
+
+# =========================================================
+# Secrets / environment
+# =========================================================
+.env
+.env.*
+*.secrets.json
+secrets.json
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+
+# =========================================================
+# IDEs / editors
+# =========================================================
+**/.vs/
+**/.vscode/
+**/.idea/
+*.user
+*.suo
+*.cache
+*.log
+*.code-workspace
+
+# Rider / ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# =========================================================
+# .NET / ASP.NET Core
+# =========================================================
+**/bin/
+**/obj/
+**/[Dd]ebug*/
+**/[Rr]elease*/
+**/x64/
+**/x86/
+**/AnyCPU/
+**/TestResults/
+**/.nuget/
+**/artifacts/
+**/publish/
+**/out/
+**/logs/
+**/*.nupkg
+**/*.snupkg
+
+# dotnet tools / local cache
+.dotnet/
+.nuget/NuGet.Config.user
+**/.store/
+
+# =========================================================
+# Build / coverage / analysis
+# =========================================================
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.coverage
+*.coveragexml
+**/coverage/
+**/*.trx
+**/*.sarif
+**/.sonarqube/
+**/.scannerwork/
+
+# =========================================================
+# Angular / Node.js
+# =========================================================
+**/node_modules/
+**/dist/
+**/out-tsc/
+**/.angular/
+**/.cache/
+**/.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# If you keep environment.ts committed, remove this line
+# src/environments/environment*.ts
+
+# =========================================================
+# TypeScript / JavaScript build artifacts
+# =========================================================
+*.tsbuildinfo
+
+# =========================================================
+# Docker / local overrides (optional)
+# =========================================================
+**/*.local.yml
+**/docker-compose.override.yml
+
+# =========================================================
+# Certificates / keys
+# =========================================================
+*.pfx
+*.p12
+*.pem
+*.key

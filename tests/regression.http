@@ -1,0 +1,96 @@
+# FILE: tests/regression.http
+
+# ============================
+# MedCareHub regression checks
+# ============================
+
+@baseUrl = http://localhost:8080/api
+@tokenPatient = REPLACE_ME
+@tokenStaff = REPLACE_ME
+
+### Health
+GET http://localhost:8080/health
+
+### List prestazioni (auth required)
+GET {{baseUrl}}/prestazioni
+Authorization: Bearer {{tokenStaff}}
+
+### Create prestazione (staff)
+POST {{baseUrl}}/prestazioni
+Authorization: Bearer {{tokenStaff}}
+Content-Type: application/json
+
+{
+  "name": "Visita cardiologica",
+  "durationMinutes": 30,
+  "description": "Visita specialistica"
+}
+
+### Create slot (staff) - set prestazioneId from previous response
+POST {{baseUrl}}/slots
+Authorization: Bearer {{tokenStaff}}
+Content-Type: application/json
+
+{
+  "doctorId": "dr-rossi",
+  "prestazioneId": null,
+  "startsAt": "2026-03-01T09:00:00Z",
+  "endsAt": "2026-03-01T09:30:00Z"
+}
+
+### Get slots (patient)
+GET {{baseUrl}}/slots
+Authorization: Bearer {{tokenPatient}}
+
+### Create booking (patient) - set slotId
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{tokenPatient}}
+Content-Type: application/json
+
+{ "slotId": "REPLACE_SLOT_GUID" }
+
+### Try double-book same slot => 409
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{tokenPatient}}
+Content-Type: application/json
+
+{ "slotId": "REPLACE_SLOT_GUID" }
+
+### Cancel booking (patient) - set bookingId
+DELETE {{baseUrl}}/bookings/REPLACE_BOOKING_GUID
+Authorization: Bearer {{tokenPatient}}
+
+### Re-book same slot after cancel => OK
+POST {{baseUrl}}/bookings
+Authorization: Bearer {{tokenPatient}}
+Content-Type: application/json
+
+{ "slotId": "REPLACE_SLOT_GUID" }
+
+### Complete booking (staff)
+POST {{baseUrl}}/bookings/REPLACE_BOOKING_GUID/complete
+Authorization: Bearer {{tokenStaff}}
+
+### Upload report (staff) - multipart/form-data (VSCode REST Client supports file)
+POST {{baseUrl}}/reports/upload
+Authorization: Bearer {{tokenStaff}}
+Content-Type: multipart/form-data; boundary=----boundary
+
+------boundary
+Content-Disposition: form-data; name="bookingId"
+
+REPLACE_BOOKING_GUID
+------boundary
+Content-Disposition: form-data; name="reportType"
+
+visita
+------boundary
+Content-Disposition: form-data; name="documentDate"
+
+2026-03-01T00:00:00Z
+------boundary
+Content-Disposition: form-data; name="file"; filename="referto.pdf"
+Content-Type: application/pdf
+
+< ./referto.pdf
+------boundary--

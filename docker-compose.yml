@@ -1,0 +1,124 @@
+name: medcarehub
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: medcarehub-postgres
+    environment:
+      POSTGRES_DB: medcarehub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d medcarehub"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  minio:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    container_name: medcarehub-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  keycloak-db:
+    image: postgres:16
+    container_name: medcarehub-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    volumes:
+      - keycloak-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.0
+    container_name: medcarehub-keycloak
+    command: start-dev --import-realm
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./keycloak/realm-medcarehub.json:/opt/keycloak/data/import/realm-medcarehub.json:ro
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\n\r\n' >&3 && cat <&3 | head -n 1 | grep -q '200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Full profile (API container)
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: backend/src/MedCareHub.Api/Dockerfile
+    container_name: medcarehub-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=medcarehub;Username=postgres;Password=postgres
+      Auth__Authority: http://keycloak:8080/realms/medcarehub
+      Auth__ValidateAudience: "false"
+      Auth__ValidateIssuer: "false"
+      Cors__AllowedOrigins__0: http://localhost:4200
+      Storage__Endpoint: http://minio:9000
+      Storage__AccessKey: minioadmin
+      Storage__SecretKey: minioadmin
+      Storage__Bucket: reports
+      Database__ApplyMigrationsOnStartup: "true"
+    ports:
+      - "8080:8080"
+
+  web:
+    build: ./frontend
+    container_name: medcarehub-web
+    ports:
+      - "4200:80"
+    environment:
+      API_BASE_URL: "/api"
+      KEYCLOAK_URL: "http://localhost:8081"   
+      KEYCLOAK_REALM: "medcarehub"
+      KEYCLOAK_CLIENT_ID: "medcarehub-web"
+
+volumes:
+  pg-data:
+  minio-data:
+  keycloak-pg-data:
