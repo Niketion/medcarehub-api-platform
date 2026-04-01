@@ -277,3 +277,17 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.02em; }
   border-radius: 999px;
   background: rgba(17,24,39,0.55);
 }
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+  background: #f3f5f9;
+  overflow-x: hidden;
+}
+
+app-root {
+  display: block;
+  min-height: 100vh;
+  background: #f3f5f9;
+}

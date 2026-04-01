@@ -14,6 +14,12 @@ public static class BookingStatus
     public const string Completed = "completed";
 }
 
+public static class PaymentStatuses
+{
+    public const string Unpaid = "unpaid";
+    public const string Paid = "paid";
+}
+
 public static class AuditOutcome
 {
     public const string Success = "success";

@@ -59,6 +59,10 @@ public sealed class AppDbContext : DbContext
             e.Property(x => x.BookedPrice)
                 .HasPrecision(10, 2)
                 .HasDefaultValue(0m);
+
+            e.Property(x => x.PaymentStatus)
+                .HasMaxLength(20)
+                .HasDefaultValue(PaymentStatuses.Unpaid);
         });
 
         modelBuilder.Entity<Report>(e =>

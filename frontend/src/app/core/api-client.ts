@@ -33,6 +33,8 @@ export interface BookingDto {
   slotPrestazioneName?: string | null;
   bookedPrice: number;
   status: string;
+  paymentStatus: string;
+  paidAt?: string | null;
   createdAt: string;
 }
 
@@ -56,8 +58,10 @@ export interface DoctorEconomicsDto {
   doctorId: string;
   confirmedBookings: number;
   completedBookings: number;
+  paidBookings: number;
   estimatedRevenue: number;
   realizedRevenue: number;
+  paidRevenue: number;
 }
 
 export interface PrestazioneEconomicsDto {
@@ -65,18 +69,29 @@ export interface PrestazioneEconomicsDto {
   prestazioneName: string;
   confirmedBookings: number;
   completedBookings: number;
+  paidBookings: number;
   estimatedRevenue: number;
   realizedRevenue: number;
+  paidRevenue: number;
+}
+
+export interface RevenueTrendPointDto {
+  label: string;
+  realizedRevenue: number;
+  paidRevenue: number;
 }
 
 export interface DashboardEconomicsDto {
   estimatedRevenue: number;
   realizedRevenue: number;
+  paidRevenue: number;
   averageTicket: number;
   confirmedBookings: number;
   completedBookings: number;
+  paidBookings: number;
   byDoctor: DoctorEconomicsDto[];
   byPrestazione: PrestazioneEconomicsDto[];
+  revenueTrend: RevenueTrendPointDto[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -133,6 +148,10 @@ export class ApiClient {
     return this.http.post<void>(`${this.base}/bookings/${id}/complete`, {});
   }
 
+  markBookingPaid(id: string): Observable<void> {
+    return this.http.post<void>(`${this.base}/bookings/${id}/mark-paid`, {});
+  }
+
   myReports(): Observable<ReportDto[]> {
     return this.http.get<ReportDto[]>(`${this.base}/reports/my`);
   }
@@ -141,7 +160,11 @@ export class ApiClient {
     return this.http.get<ReportDto[]>(`${this.base}/reports`);
   }
 
-  uploadReport(bookingId: string, file: File, meta?: { reportType?: string; documentDate?: string | null }): Observable<ReportDto> {
+  uploadReport(
+    bookingId: string,
+    file: File,
+    meta?: { reportType?: string; documentDate?: string | null }
+  ): Observable<ReportDto> {
     const form = new FormData();
     form.append('bookingId', bookingId);
     if (meta?.reportType?.trim()) form.append('reportType', meta.reportType.trim());

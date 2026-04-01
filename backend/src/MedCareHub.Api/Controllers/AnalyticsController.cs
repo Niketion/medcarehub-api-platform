@@ -58,13 +58,18 @@ public sealed class AnalyticsController : ControllerBase
         static bool IsCompleted(Booking b) =>
             string.Equals(b.Status, BookingStatus.Completed, StringComparison.OrdinalIgnoreCase);
 
+        static bool IsPaid(Booking b) =>
+            string.Equals(b.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase);
+
         var confirmed = items.Where(IsConfirmed).ToList();
         var completed = items.Where(IsCompleted).ToList();
-        var economicItems = items.Where(x => IsConfirmed(x) || IsCompleted(x)).ToList();
+        var paid = items.Where(IsPaid).ToList();
+        var nonCancelled = items.Where(x => !string.Equals(x.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase)).ToList();
 
         var estimatedRevenue = confirmed.Sum(x => x.BookedPrice);
         var realizedRevenue = completed.Sum(x => x.BookedPrice);
-        var averageTicket = economicItems.Count == 0 ? 0m : economicItems.Average(x => x.BookedPrice);
+        var paidRevenue = paid.Sum(x => x.BookedPrice);
+        var averageTicket = nonCancelled.Count == 0 ? 0m : nonCancelled.Average(x => x.BookedPrice);
 
         var byDoctor = items
             .GroupBy(b => b.Slot.DoctorId)
@@ -72,11 +77,13 @@ public sealed class AnalyticsController : ControllerBase
                 g.Key,
                 g.Count(IsConfirmed),
                 g.Count(IsCompleted),
+                g.Count(IsPaid),
                 g.Where(IsConfirmed).Sum(x => x.BookedPrice),
-                g.Where(IsCompleted).Sum(x => x.BookedPrice)
+                g.Where(IsCompleted).Sum(x => x.BookedPrice),
+                g.Where(IsPaid).Sum(x => x.BookedPrice)
             ))
-            .OrderByDescending(x => x.RealizedRevenue)
-            .ThenByDescending(x => x.EstimatedRevenue)
+            .OrderByDescending(x => x.PaidRevenue)
+            .ThenByDescending(x => x.RealizedRevenue)
             .Take(10)
             .ToList();
 
@@ -91,22 +98,37 @@ public sealed class AnalyticsController : ControllerBase
                 g.Key.PrestazioneName,
                 g.Count(IsConfirmed),
                 g.Count(IsCompleted),
+                g.Count(IsPaid),
                 g.Where(IsConfirmed).Sum(x => x.BookedPrice),
-                g.Where(IsCompleted).Sum(x => x.BookedPrice)
+                g.Where(IsCompleted).Sum(x => x.BookedPrice),
+                g.Where(IsPaid).Sum(x => x.BookedPrice)
             ))
-            .OrderByDescending(x => x.RealizedRevenue)
-            .ThenByDescending(x => x.EstimatedRevenue)
+            .OrderByDescending(x => x.PaidRevenue)
+            .ThenByDescending(x => x.RealizedRevenue)
             .Take(10)
+            .ToList();
+
+        var revenueTrend = items
+            .GroupBy(x => x.Slot.StartsAt.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new RevenueTrendPointDto(
+                g.Key.ToString("dd/MM"),
+                g.Where(IsCompleted).Sum(x => x.BookedPrice),
+                g.Where(IsPaid).Sum(x => x.BookedPrice)
+            ))
             .ToList();
 
         return Ok(new DashboardEconomicsDto(
             estimatedRevenue,
             realizedRevenue,
+            paidRevenue,
             averageTicket,
             confirmed.Count,
             completed.Count,
+            paid.Count,
             byDoctor,
-            byPrestazione
+            byPrestazione,
+            revenueTrend
         ));
     }
 }

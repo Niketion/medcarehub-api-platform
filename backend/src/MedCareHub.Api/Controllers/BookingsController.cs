@@ -175,6 +175,45 @@ public sealed class BookingsController : ControllerBase
         return Ok(items.Select(ToDto));
     }
 
+    [HttpPost("{id:guid}/mark-paid")]
+    [Authorize(Policy = Policies.Staff)]
+    public async Task<IActionResult> MarkPaid(Guid id, CancellationToken ct)
+    {
+        var actorSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
+        var actorRole = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+
+        try
+        {
+            await _bookingService.MarkBookingPaidAsync(id, ct);
+
+            await _audit.LogAsync(
+                "booking_paid",
+                actorSub,
+                actorRole,
+                AuditOutcome.Success,
+                "booking",
+                id.ToString(),
+                null,
+                ct);
+
+            return NoContent();
+        }
+        catch (Exception ex) when (ex is NotFoundException or ConflictException)
+        {
+            await _audit.LogAsync(
+                "booking_pay_failed",
+                actorSub,
+                actorRole,
+                AuditOutcome.Fail,
+                "booking",
+                id.ToString(),
+                new { reason = ex.Message },
+                ct);
+
+            throw;
+        }
+    }
+
     private static BookingDto ToDto(Booking b) => new(
         b.Id,
         b.SlotId,
@@ -185,6 +224,8 @@ public sealed class BookingsController : ControllerBase
         b.Slot.Prestazione?.Name,
         b.BookedPrice,
         b.Status,
+        b.PaymentStatus,
+        b.PaidAt,
         b.CreatedAt
     );
 }

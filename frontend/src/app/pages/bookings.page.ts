@@ -13,7 +13,7 @@ type Toast = { type: 'success' | 'error'; message: string };
     <div class="page-head">
       <div class="page-title">
         <h1>Prenotazioni</h1>
-        <div class="sub">Area paziente: elenco prenotazioni e annullamento.</div>
+        <div class="sub">Area paziente: elenco prenotazioni, stato pagamento e annullamento.</div>
       </div>
       <button class="btn" (click)="load()" [disabled]="loading">
         {{ loading ? 'Carico…' : 'Ricarica' }}
@@ -46,7 +46,9 @@ type Toast = { type: 'success' | 'error'; message: string };
                 <th>Slot</th>
                 <th>DoctorId</th>
                 <th>Prestazione</th>
+                <th>Valore</th>
                 <th>Stato</th>
+                <th>Pagamento</th>
                 <th style="width:200px;"></th>
               </tr>
             </thead>
@@ -58,9 +60,15 @@ type Toast = { type: 'success' | 'error'; message: string };
                 </td>
                 <td>{{ b.slotDoctorId }}</td>
                 <td>{{ b.slotPrestazioneName || '-' }}</td>
+                <td>{{ formatEuro(b.bookedPrice) }}</td>
                 <td>
                   <span class="badge" [ngClass]="bookingBadgeClass(b.status)">
                     {{ bookingLabel(b.status) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="paymentBadgeClass(b.paymentStatus)">
+                    {{ paymentLabel(b.paymentStatus) }}
                   </span>
                 </td>
                 <td>
@@ -138,6 +146,18 @@ export class BookingsPageComponent {
     return '';
   }
 
+  paymentLabel(status: string | null | undefined) {
+    const s = (status ?? '').toLowerCase();
+    if (s === 'paid') return 'Pagata';
+    return 'Da pagare';
+  }
+
+  paymentBadgeClass(status: string | null | undefined) {
+    const s = (status ?? '').toLowerCase();
+    if (s === 'paid') return 'success';
+    return 'warning';
+  }
+
   async cancel(b: BookingDto) {
     if (!confirm('Confermi l’annullamento della prenotazione?')) return;
 
@@ -154,5 +174,10 @@ export class BookingsPageComponent {
     } finally {
       this.cancelingId = null;
     }
+  }
+
+  formatEuro(n: number | null | undefined) {
+    const v = Number(n ?? 0);
+    return `€ ${v.toFixed(2)}`;
   }
 }
