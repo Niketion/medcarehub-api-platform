@@ -11,7 +11,7 @@ namespace MedCareHub.Api.Tests.Controllers;
 public sealed class AnalyticsControllerTests
 {
     [Fact]
-    public async Task GetEconomics_ShouldCalculateTotals_AndGroupings()
+    public async Task GetEconomics_ShouldCalculateTotals_Groupings_AndTrend()
     {
         await using var db = TestDbFactory.Create();
 
@@ -73,6 +73,7 @@ public sealed class AnalyticsControllerTests
                 Slot = slot1,
                 Status = BookingStatus.Confirmed,
                 BookedPrice = 100m,
+                PaymentStatus = PaymentStatuses.Unpaid,
                 CreatedAt = new DateTimeOffset(2026, 04, 01, 8, 0, 0, TimeSpan.Zero)
             },
             new Booking
@@ -83,6 +84,8 @@ public sealed class AnalyticsControllerTests
                 Slot = slot2,
                 Status = BookingStatus.Completed,
                 BookedPrice = 50m,
+                PaymentStatus = PaymentStatuses.Paid,
+                PaidAt = new DateTimeOffset(2026, 04, 02, 12, 0, 0, TimeSpan.Zero),
                 CreatedAt = new DateTimeOffset(2026, 04, 02, 8, 0, 0, TimeSpan.Zero)
             },
             new Booking
@@ -93,6 +96,8 @@ public sealed class AnalyticsControllerTests
                 Slot = slot3,
                 Status = BookingStatus.Completed,
                 BookedPrice = 100m,
+                PaymentStatus = PaymentStatuses.Paid,
+                PaidAt = new DateTimeOffset(2026, 04, 03, 12, 0, 0, TimeSpan.Zero),
                 CreatedAt = new DateTimeOffset(2026, 04, 03, 8, 0, 0, TimeSpan.Zero)
             },
             new Booking
@@ -103,6 +108,7 @@ public sealed class AnalyticsControllerTests
                 Slot = slot3,
                 Status = BookingStatus.Cancelled,
                 BookedPrice = 100m,
+                PaymentStatus = PaymentStatuses.Unpaid,
                 CreatedAt = new DateTimeOffset(2026, 04, 03, 7, 0, 0, TimeSpan.Zero)
             });
 
@@ -117,37 +123,53 @@ public sealed class AnalyticsControllerTests
 
         dto.EstimatedRevenue.Should().Be(100m);
         dto.RealizedRevenue.Should().Be(150m);
+        dto.PaidRevenue.Should().Be(150m);
         dto.ConfirmedBookings.Should().Be(1);
         dto.CompletedBookings.Should().Be(2);
+        dto.PaidBookings.Should().Be(2);
         dto.AverageTicket.Should().BeApproximately(83.3333333333m, 0.001m);
 
         dto.ByDoctor.Should().Contain(x =>
             x.DoctorId == "dr-rossi" &&
             x.ConfirmedBookings == 1 &&
             x.CompletedBookings == 1 &&
+            x.PaidBookings == 1 &&
             x.EstimatedRevenue == 100m &&
-            x.RealizedRevenue == 50m);
+            x.RealizedRevenue == 50m &&
+            x.PaidRevenue == 50m);
 
         dto.ByDoctor.Should().Contain(x =>
             x.DoctorId == "dr-bianchi" &&
             x.ConfirmedBookings == 0 &&
             x.CompletedBookings == 1 &&
+            x.PaidBookings == 1 &&
             x.EstimatedRevenue == 0m &&
-            x.RealizedRevenue == 100m);
+            x.RealizedRevenue == 100m &&
+            x.PaidRevenue == 100m);
 
         dto.ByPrestazione.Should().Contain(x =>
             x.PrestazioneName == "Visita cardiologica" &&
             x.ConfirmedBookings == 1 &&
             x.CompletedBookings == 1 &&
+            x.PaidBookings == 1 &&
             x.EstimatedRevenue == 100m &&
-            x.RealizedRevenue == 100m);
+            x.RealizedRevenue == 100m &&
+            x.PaidRevenue == 100m);
 
         dto.ByPrestazione.Should().Contain(x =>
             x.PrestazioneName == "Analisi del sangue" &&
             x.ConfirmedBookings == 0 &&
             x.CompletedBookings == 1 &&
+            x.PaidBookings == 1 &&
             x.EstimatedRevenue == 0m &&
-            x.RealizedRevenue == 50m);
+            x.RealizedRevenue == 50m &&
+            x.PaidRevenue == 50m);
+
+        dto.RevenueTrend.Should().NotBeEmpty();
+        dto.RevenueTrend.Should().Contain(x =>
+            x.Label == "02/04" &&
+            x.RealizedRevenue == 50m &&
+            x.PaidRevenue == 50m);
     }
 
     [Fact]
@@ -194,7 +216,8 @@ public sealed class AnalyticsControllerTests
                 SlotId = slotIn.Id,
                 Slot = slotIn,
                 Status = BookingStatus.Confirmed,
-                BookedPrice = 100m
+                BookedPrice = 100m,
+                PaymentStatus = PaymentStatuses.Unpaid
             },
             new Booking
             {
@@ -203,7 +226,9 @@ public sealed class AnalyticsControllerTests
                 SlotId = slotOut.Id,
                 Slot = slotOut,
                 Status = BookingStatus.Completed,
-                BookedPrice = 100m
+                BookedPrice = 100m,
+                PaymentStatus = PaymentStatuses.Paid,
+                PaidAt = new DateTimeOffset(2026, 05, 01, 12, 0, 0, TimeSpan.Zero)
             });
 
         await db.SaveChangesAsync();
@@ -221,6 +246,8 @@ public sealed class AnalyticsControllerTests
 
         dto.EstimatedRevenue.Should().Be(100m);
         dto.RealizedRevenue.Should().Be(0m);
+        dto.PaidRevenue.Should().Be(0m);
+        dto.PaidBookings.Should().Be(0);
         dto.ByDoctor.Should().ContainSingle(x => x.DoctorId == "dr-rossi");
         dto.ByDoctor.Should().NotContain(x => x.DoctorId == "dr-bianchi");
     }

@@ -15,7 +15,7 @@ namespace MedCareHub.Api.Tests.Controllers;
 public sealed class BookingsControllerTests
 {
     [Fact]
-    public async Task Create_ShouldReturnBookedPrice_AndWriteSuccessAudit()
+    public async Task Create_ShouldReturnBookedPrice_AndPaymentStatus_AndWriteSuccessAudit()
     {
         await using var db = TestDbFactory.Create();
 
@@ -44,7 +44,8 @@ public sealed class BookingsControllerTests
             SlotId = slot.Id,
             Slot = slot,
             Status = BookingStatus.Confirmed,
-            BookedPrice = 120m
+            BookedPrice = 120m,
+            PaymentStatus = PaymentStatuses.Unpaid
         };
 
         db.Prestazioni.Add(prestazione);
@@ -76,6 +77,8 @@ public sealed class BookingsControllerTests
 
         dto.BookedPrice.Should().Be(120m);
         dto.SlotPrestazioneName.Should().Be("Visita cardiologica");
+        dto.PaymentStatus.Should().Be(PaymentStatuses.Unpaid);
+        dto.PaidAt.Should().BeNull();
 
         fakeAudit.Calls.Should().ContainSingle(x =>
             x.Event == "booking_created" &&
@@ -154,6 +157,80 @@ public sealed class BookingsControllerTests
         fakeAudit.Calls.Should().ContainSingle(x =>
             x.Event == "booking_cancelled" &&
             x.Outcome == AuditOutcome.Success &&
+            x.ResourceId == bookingId.ToString());
+    }
+
+    [Fact]
+    public async Task MarkPaid_ShouldReturnNoContent_AndWriteSuccessAudit()
+    {
+        await using var db = TestDbFactory.Create();
+
+        var bookingId = Guid.NewGuid();
+        var called = false;
+
+        var fakeService = new FakeBookingService
+        {
+            OnMarkPaid = (id, _) =>
+            {
+                called = id == bookingId;
+                return Task.CompletedTask;
+            }
+        };
+        var fakeAudit = new FakeAuditService();
+
+        var sut = new BookingsController(db, fakeService, fakeAudit)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = TestPrincipalFactory.Create("operator-1", Roles.Operator)
+                }
+            }
+        };
+
+        var result = await sut.MarkPaid(bookingId, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        called.Should().BeTrue();
+
+        fakeAudit.Calls.Should().ContainSingle(x =>
+            x.Event == "booking_paid" &&
+            x.Outcome == AuditOutcome.Success &&
+            x.ResourceId == bookingId.ToString());
+    }
+
+    [Fact]
+    public async Task MarkPaid_ShouldAuditFailure_WhenServiceThrowsConflict()
+    {
+        await using var db = TestDbFactory.Create();
+
+        var bookingId = Guid.NewGuid();
+
+        var fakeService = new FakeBookingService
+        {
+            OnMarkPaid = (_, _) => throw new ConflictException("Already paid.")
+        };
+        var fakeAudit = new FakeAuditService();
+
+        var sut = new BookingsController(db, fakeService, fakeAudit)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = TestPrincipalFactory.Create("operator-1", Roles.Operator)
+                }
+            }
+        };
+
+        var act = async () => await sut.MarkPaid(bookingId, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>();
+
+        fakeAudit.Calls.Should().ContainSingle(x =>
+            x.Event == "booking_pay_failed" &&
+            x.Outcome == AuditOutcome.Fail &&
             x.ResourceId == bookingId.ToString());
     }
 }
