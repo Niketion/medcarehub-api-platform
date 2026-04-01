@@ -1,4 +1,5 @@
 using MedCareHub.Api.Data;
+using MedCareHub.Api.Domain;
 using MedCareHub.Api.Exceptions;
 using MedCareHub.Api.Models;
 using Microsoft.EntityFrameworkCore;
@@ -23,8 +24,7 @@ public sealed class BookingService : IBookingService
         if (slot is null)
             throw new NotFoundException("Slot not found.");
 
-        if (!string.Equals(slot.Status, SlotStatus.Available, StringComparison.OrdinalIgnoreCase))
-            throw new ConflictException("Slot not available.");
+        BookingRules.EnsureSlotCanBeBooked(slot);
 
         decimal bookedPrice = 0m;
 
@@ -73,19 +73,14 @@ public sealed class BookingService : IBookingService
         if (booking is null)
             throw new NotFoundException("Booking not found.");
 
-        if (!string.Equals(booking.PatientSub, patientSub, StringComparison.Ordinal))
-            throw new ForbiddenException("Not owner.");
+        BookingRules.EnsurePatientCanCancel(booking, patientSub);
 
-        if (string.Equals(booking.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+        var changed = BookingRules.TryCancel(booking);
+        if (!changed)
+        {
+            await tx.CommitAsync(ct);
             return;
-
-        if (string.Equals(booking.Status, BookingStatus.Completed, StringComparison.OrdinalIgnoreCase))
-            throw new ConflictException("Completed bookings cannot be cancelled.");
-
-        booking.Status = BookingStatus.Cancelled;
-
-        if (string.Equals(booking.Slot.Status, SlotStatus.Booked, StringComparison.OrdinalIgnoreCase))
-            booking.Slot.Status = SlotStatus.Available;
+        }
 
         await _db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -93,18 +88,23 @@ public sealed class BookingService : IBookingService
 
     public async Task CompleteBookingAsync(Guid bookingId, CancellationToken ct)
     {
-        var booking = await _db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        var booking = await _db.Bookings
+            .Include(b => b.Slot)
+            .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
         if (booking is null)
             throw new NotFoundException("Booking not found.");
 
-        if (string.Equals(booking.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
-            throw new ConflictException("Cancelled bookings cannot be completed.");
-
-        if (string.Equals(booking.Status, BookingStatus.Completed, StringComparison.OrdinalIgnoreCase))
+        var changed = BookingRules.TryComplete(booking);
+        if (!changed)
+        {
+            await tx.CommitAsync(ct);
             return;
+        }
 
-        booking.Status = BookingStatus.Completed;
         await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
     }
 }
