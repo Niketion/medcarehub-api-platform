@@ -10,6 +10,8 @@ public sealed record BookingDto(
     string? SlotPrestazioneName,
     decimal BookedPrice,
     string Status,
+    string PaymentStatus,
+    DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt
 );
 

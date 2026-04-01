@@ -7,6 +7,7 @@ import { AuthService } from './core/auth.service';
   selector: 'app-root',
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, NgIf, NgFor],
+  styleUrls: ['./app.component.css'],
   template: `
   <header class="header">
     <div class="container">
@@ -46,7 +47,7 @@ import { AuthService } from './core/auth.service';
   </main>
 
   <footer class="container footer">
-    PW · Slot · Prenotazioni · Referti 
+    PW · Slot · Prenotazioni · Referti
   </footer>
   `
 })

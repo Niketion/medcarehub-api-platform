@@ -118,6 +118,14 @@ services:
       KEYCLOAK_REALM: "medcarehub"
       KEYCLOAK_CLIENT_ID: "medcarehub-web"
 
+  api-tests:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    container_name: medcarehub-api-tests
+    working_dir: /src
+    volumes:
+      - ./:/src
+    command: ["dotnet", "test", "tests/MedCareHub.Api.Tests/MedCareHub.Api.Tests.csproj"]
+    
 volumes:
   pg-data:
   minio-data:

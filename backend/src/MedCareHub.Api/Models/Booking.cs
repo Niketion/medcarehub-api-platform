@@ -11,8 +11,10 @@ public sealed class Booking
 
     public string Status { get; set; } = BookingStatus.Confirmed;
 
-    // prezzo storicizzato al momento della prenotazione
     public decimal BookedPrice { get; set; } = 0m;
+
+    public string PaymentStatus { get; set; } = PaymentStatuses.Unpaid;
+    public DateTimeOffset? PaidAt { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
