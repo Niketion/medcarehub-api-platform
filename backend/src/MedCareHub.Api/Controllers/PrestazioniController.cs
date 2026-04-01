@@ -1,4 +1,5 @@
-﻿using MedCareHub.Api.Auth;
+﻿using System.Security.Claims;
+using MedCareHub.Api.Auth;
 using MedCareHub.Api.Data;
 using MedCareHub.Api.DTOs;
 using MedCareHub.Api.Models;
@@ -6,7 +7,6 @@ using MedCareHub.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace MedCareHub.Api.Controllers;
 
@@ -32,7 +32,14 @@ public sealed class PrestazioniController : ControllerBase
             .Take(500)
             .ToListAsync(ct);
 
-        return Ok(items.Select(p => new PrestazioneDto(p.Id, p.Name, p.DurationMinutes, p.Description, p.CreatedAt)));
+        return Ok(items.Select(p => new PrestazioneDto(
+            p.Id,
+            p.Name,
+            p.DurationMinutes,
+            p.Description,
+            p.BasePrice,
+            p.CreatedAt
+        )));
     }
 
     [HttpPost]
@@ -42,11 +49,15 @@ public sealed class PrestazioniController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Name))
             return BadRequest(new { error = "Name is required" });
 
+        if (req.BasePrice < 0)
+            return BadRequest(new { error = "BasePrice must be >= 0" });
+
         var p = new Prestazione
         {
             Name = req.Name.Trim(),
             DurationMinutes = req.DurationMinutes,
-            Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim()
+            Description = string.IsNullOrWhiteSpace(req.Description) ? null : req.Description.Trim(),
+            BasePrice = req.BasePrice
         };
 
         _db.Prestazioni.Add(p);
@@ -55,9 +66,23 @@ public sealed class PrestazioniController : ControllerBase
         var actorSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
         var actorRole = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
 
-        await _audit.LogAsync("prestazione_created", actorSub, actorRole, AuditOutcome.Success, "prestazione", p.Id.ToString(),
-            new { p.Name, p.DurationMinutes }, ct);
+        await _audit.LogAsync(
+            "prestazione_created",
+            actorSub,
+            actorRole,
+            AuditOutcome.Success,
+            "prestazione",
+            p.Id.ToString(),
+            new { p.Name, p.DurationMinutes, p.BasePrice },
+            ct);
 
-        return Ok(new PrestazioneDto(p.Id, p.Name, p.DurationMinutes, p.Description, p.CreatedAt));
+        return Ok(new PrestazioneDto(
+            p.Id,
+            p.Name,
+            p.DurationMinutes,
+            p.Description,
+            p.BasePrice,
+            p.CreatedAt
+        ));
     }
 }

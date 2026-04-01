@@ -16,7 +16,6 @@ public sealed class BookingService : IBookingService
     {
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-        // Lock slot row to avoid races
         var slot = await _db.Slots
             .FromSqlInterpolated($@"SELECT * FROM ""public"".""Slots"" WHERE ""Id"" = {slotId} FOR UPDATE")
             .SingleOrDefaultAsync(ct);
@@ -27,13 +26,25 @@ public sealed class BookingService : IBookingService
         if (!string.Equals(slot.Status, SlotStatus.Available, StringComparison.OrdinalIgnoreCase))
             throw new ConflictException("Slot not available.");
 
+        decimal bookedPrice = 0m;
+
+        if (slot.PrestazioneId.HasValue)
+        {
+            bookedPrice = await _db.Prestazioni
+                .AsNoTracking()
+                .Where(p => p.Id == slot.PrestazioneId.Value)
+                .Select(p => p.BasePrice)
+                .FirstOrDefaultAsync(ct);
+        }
+
         slot.Status = SlotStatus.Booked;
 
         var booking = new Booking
         {
             PatientSub = patientSub,
             SlotId = slotId,
-            Status = BookingStatus.Confirmed
+            Status = BookingStatus.Confirmed,
+            BookedPrice = bookedPrice
         };
 
         _db.Bookings.Add(booking);
@@ -73,7 +84,7 @@ public sealed class BookingService : IBookingService
 
         booking.Status = BookingStatus.Cancelled;
 
-        if (booking.Slot is not null && string.Equals(booking.Slot.Status, SlotStatus.Booked, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(booking.Slot.Status, SlotStatus.Booked, StringComparison.OrdinalIgnoreCase))
             booking.Slot.Status = SlotStatus.Available;
 
         await _db.SaveChangesAsync(ct);
@@ -82,11 +93,7 @@ public sealed class BookingService : IBookingService
 
     public async Task CompleteBookingAsync(Guid bookingId, CancellationToken ct)
     {
-        await using var tx = await _db.Database.BeginTransactionAsync(ct);
-
-        var booking = await _db.Bookings
-            .Include(b => b.Slot)
-            .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+        var booking = await _db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
         if (booking is null)
             throw new NotFoundException("Booking not found.");
@@ -98,8 +105,6 @@ public sealed class BookingService : IBookingService
             return;
 
         booking.Status = BookingStatus.Completed;
-
         await _db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
     }
 }

@@ -5,6 +5,7 @@ public sealed record SlotDto(
     string DoctorId,
     Guid? PrestazioneId,
     string? PrestazioneName,
+    decimal? PrestazioneBasePrice,
     DateTimeOffset StartsAt,
     DateTimeOffset EndsAt,
     string Status

@@ -42,25 +42,104 @@ public sealed class BookingsController : ControllerBase
                 .ThenInclude(s => s.Prestazione)
                 .FirstAsync(b => b.Id == booking.Id, ct);
 
-            await _audit.LogAsync("booking_created", patientSub, actorRole, AuditOutcome.Success, "booking", booking.Id.ToString(),
-                new { slotId = req.SlotId }, ct);
+            await _audit.LogAsync(
+                "booking_created",
+                patientSub,
+                actorRole,
+                AuditOutcome.Success,
+                "booking",
+                booking.Id.ToString(),
+                new { booking.SlotId, booking.BookedPrice },
+                ct);
 
-            return Ok(new BookingDto(
-                booking.Id,
-                booking.SlotId,
-                booking.Slot.StartsAt,
-                booking.Slot.EndsAt,
-                booking.Slot.DoctorId,
-                booking.Slot.PrestazioneId,
-                booking.Slot.Prestazione?.Name,
-                booking.Status,
-                booking.CreatedAt
-            ));
+            return Ok(ToDto(booking));
         }
-        catch (ApiException ex) when (ex is ConflictException or NotFoundException or BadRequestException)
+        catch (NotFoundException)
         {
-            await _audit.LogAsync("booking_create_failed", patientSub, actorRole, AuditOutcome.Fail, "slot", req.SlotId.ToString(),
-                new { reason = ex.Message }, ct);
+            await _audit.LogAsync("booking_create_failed", patientSub, actorRole, AuditOutcome.Fail, "slot", req.SlotId.ToString(), new { reason = "slot_not_found" }, ct);
+            throw;
+        }
+        catch (ConflictException ex)
+        {
+            await _audit.LogAsync("booking_create_failed", patientSub, actorRole, AuditOutcome.Fail, "slot", req.SlotId.ToString(), new { reason = ex.Message }, ct);
+            throw;
+        }
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = Policies.Patient)]
+    public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
+    {
+        var patientSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
+        var actorRole = Roles.Patient;
+
+        try
+        {
+            await _bookingService.CancelBookingAsync(patientSub, id, ct);
+
+            await _audit.LogAsync(
+                "booking_cancelled",
+                patientSub,
+                actorRole,
+                AuditOutcome.Success,
+                "booking",
+                id.ToString(),
+                null,
+                ct);
+
+            return NoContent();
+        }
+        catch (Exception ex) when (ex is NotFoundException or ConflictException or ForbiddenException)
+        {
+            await _audit.LogAsync(
+                "booking_cancel_failed",
+                patientSub,
+                actorRole,
+                AuditOutcome.Fail,
+                "booking",
+                id.ToString(),
+                new { reason = ex.Message },
+                ct);
+
+            throw;
+        }
+    }
+
+    [HttpPost("{id:guid}/complete")]
+    [Authorize(Policy = Policies.Staff)]
+    public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
+    {
+        var actorSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
+        var actorRole = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+
+        try
+        {
+            await _bookingService.CompleteBookingAsync(id, ct);
+
+            await _audit.LogAsync(
+                "booking_completed",
+                actorSub,
+                actorRole,
+                AuditOutcome.Success,
+                "booking",
+                id.ToString(),
+                null,
+                ct);
+
+            return NoContent();
+        }
+        catch (Exception ex) when (ex is NotFoundException or ConflictException)
+        {
+            await _audit.LogAsync(
+                "booking_complete_failed",
+                actorSub,
+                actorRole,
+                AuditOutcome.Fail,
+                "booking",
+                id.ToString(),
+                new { reason = ex.Message },
+                ct);
+
             throw;
         }
     }
@@ -76,92 +155,36 @@ public sealed class BookingsController : ControllerBase
             .ThenInclude(s => s.Prestazione)
             .Where(b => b.PatientSub == patientSub)
             .OrderByDescending(b => b.CreatedAt)
-            .Take(200)
+            .Take(500)
             .ToListAsync(ct);
 
-        return Ok(items.Select(b => new BookingDto(
-            b.Id, b.SlotId, b.Slot.StartsAt, b.Slot.EndsAt, b.Slot.DoctorId,
-            b.Slot.PrestazioneId, b.Slot.Prestazione?.Name,
-            b.Status, b.CreatedAt
-        )));
+        return Ok(items.Select(ToDto));
     }
 
     [HttpGet]
     [Authorize(Policy = Policies.Staff)]
-    public async Task<ActionResult<IEnumerable<BookingDto>>> GetAll(
-        [FromQuery] DateTimeOffset? from,
-        [FromQuery] DateTimeOffset? to,
-        CancellationToken ct)
+    public async Task<ActionResult<IEnumerable<BookingDto>>> GetAll(CancellationToken ct)
     {
-        var q = _db.Bookings
+        var items = await _db.Bookings.AsNoTracking()
             .Include(b => b.Slot)
             .ThenInclude(s => s.Prestazione)
-            .AsNoTracking()
-            .AsQueryable();
-
-        if (from.HasValue)
-            q = q.Where(b => b.Slot.StartsAt >= from.Value);
-
-        if (to.HasValue)
-            q = q.Where(b => b.Slot.EndsAt <= to.Value);
-
-        var items = await q
             .OrderByDescending(b => b.CreatedAt)
-            .Take(500)
+            .Take(1000)
             .ToListAsync(ct);
 
-        return Ok(items.Select(b => new BookingDto(
-            b.Id,
-            b.SlotId,
-            b.Slot.StartsAt,
-            b.Slot.EndsAt,
-            b.Slot.DoctorId,
-            b.Slot.PrestazioneId,
-            b.Slot.Prestazione?.Name,
-            b.Status,
-            b.CreatedAt
-        )));
+        return Ok(items.Select(ToDto));
     }
 
-    [HttpDelete("{id:guid}")]
-    [Authorize(Policy = Policies.Patient)]
-    public async Task<IActionResult> Cancel([FromRoute] Guid id, CancellationToken ct)
-    {
-        var patientSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
-
-        try
-        {
-            await _bookingService.CancelBookingAsync(patientSub, id, ct);
-            await _audit.LogAsync("booking_cancelled", patientSub, Roles.Patient, AuditOutcome.Success, "booking", id.ToString(), null, ct);
-            return NoContent();
-        }
-        catch (ApiException ex)
-        {
-            await _audit.LogAsync("booking_cancel_failed", patientSub, Roles.Patient, AuditOutcome.Fail, "booking", id.ToString(),
-                new { reason = ex.Message }, ct);
-            throw;
-        }
-    }
-
-    [HttpPost("{id:guid}/complete")]
-    [Authorize(Policy = Policies.Staff)]
-    public async Task<IActionResult> Complete([FromRoute] Guid id, CancellationToken ct)
-    {
-        var actorSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
-        var actorRole = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
-
-        try
-        {
-            await _bookingService.CompleteBookingAsync(id, ct);
-
-            await _audit.LogAsync("booking_completed", actorSub, actorRole, AuditOutcome.Success, "booking", id.ToString(), null, ct);
-            return NoContent();
-        }
-        catch (ApiException ex)
-        {
-            await _audit.LogAsync("booking_complete_failed", actorSub, actorRole, AuditOutcome.Fail, "booking", id.ToString(),
-                new { reason = ex.Message }, ct);
-            throw;
-        }
-    }
+    private static BookingDto ToDto(Booking b) => new(
+        b.Id,
+        b.SlotId,
+        b.Slot.StartsAt,
+        b.Slot.EndsAt,
+        b.Slot.DoctorId,
+        b.Slot.PrestazioneId,
+        b.Slot.Prestazione?.Name,
+        b.BookedPrice,
+        b.Status,
+        b.CreatedAt
+    );
 }

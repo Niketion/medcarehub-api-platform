@@ -33,16 +33,12 @@ type Toast = { type: 'success' | 'error'; message: string };
       <button class="btn" (click)="toast=null">Chiudi</button>
     </div>
 
-    <!-- STAFF: prestazioni -->
     <div class="card" *ngIf="isStaff()">
       <div class="page-head">
         <div class="page-title">
           <h2 style="font-size:18px;">Prestazioni (staff)</h2>
           <div class="sub">Catalogo minimo per associare una tipologia allo slot.</div>
         </div>
-        <button class="btn" (click)="loadPrestazioni()" [disabled]="loadingPrestazioni">
-          {{ loadingPrestazioni ? 'Carico…' : 'Ricarica' }}
-        </button>
       </div>
 
       <div style="height:12px;"></div>
@@ -56,6 +52,11 @@ type Toast = { type: 'success' | 'error'; message: string };
         <div class="field" style="min-width:180px;">
           <div class="label">Durata (min)</div>
           <input class="input" type="number" [(ngModel)]="newPrestDuration" placeholder="30" />
+        </div>
+
+        <div class="field" style="min-width:180px;">
+          <div class="label">Prezzo base (€)</div>
+          <input class="input" type="number" step="0.01" [(ngModel)]="newPrestBasePrice" placeholder="80.00" />
         </div>
 
         <div class="field" style="flex:1; min-width:260px;">
@@ -73,7 +74,6 @@ type Toast = { type: 'success' | 'error'; message: string };
       <div class="small muted" *ngIf="prestazioniError" style="margin-top:10px;">{{ prestazioniError }}</div>
     </div>
 
-    <!-- STAFF: crea slot -->
     <div class="card" *ngIf="isStaff()">
       <div class="page-head">
         <div class="page-title">
@@ -95,7 +95,7 @@ type Toast = { type: 'success' | 'error'; message: string };
           <select class="input" [(ngModel)]="prestazioneId">
             <option value="">— Nessuna —</option>
             <option *ngFor="let p of prestazioni; trackBy: trackById" [value]="p.id">
-              {{ p.name }} <span *ngIf="p.durationMinutes">({{ p.durationMinutes }}m)</span>
+              {{ p.name }} <span *ngIf="p.durationMinutes">({{ p.durationMinutes }}m)</span> · € {{ p.basePrice | number:'1.2-2' }}
             </option>
           </select>
         </div>
@@ -120,7 +120,6 @@ type Toast = { type: 'success' | 'error'; message: string };
       <div class="small muted" *ngIf="createError" style="margin-top:10px;">{{ createError }}</div>
     </div>
 
-    <!-- Filtri + tabella -->
     <div class="card">
       <div class="row" style="justify-content:space-between; align-items:flex-end;">
         <div class="row" style="align-items:flex-end;">
@@ -164,6 +163,7 @@ type Toast = { type: 'success' | 'error'; message: string };
                 <th>Fine</th>
                 <th>DoctorId</th>
                 <th>Prestazione</th>
+                <th>Prezzo</th>
                 <th>Stato</th>
                 <th style="width:200px;"></th>
               </tr>
@@ -174,6 +174,7 @@ type Toast = { type: 'success' | 'error'; message: string };
                 <td>{{ s.endsAt   | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td>{{ s.doctorId }}</td>
                 <td>{{ s.prestazioneName || '-' }}</td>
+                <td>{{ s.prestazioneBasePrice != null ? formatEuro(s.prestazioneBasePrice) : '-' }}</td>
                 <td>
                   <span class="badge" [ngClass]="statusBadgeClass(s.status)">
                     {{ statusLabel(s.status) }}
@@ -221,13 +222,13 @@ export class SlotsPageComponent {
 
   newPrestName = '';
   newPrestDuration: number | null = null;
+  newPrestBasePrice: number | null = null;
   newPrestDescription = '';
   creatingPrestazione = false;
 
   loading = false;
   error: string | null = null;
 
-  // staff create slot
   doctorId = '';
   prestazioneId = '';
   startsAtLocal = '';
@@ -235,7 +236,6 @@ export class SlotsPageComponent {
   creating = false;
   createError: string | null = null;
 
-  // filters
   filterDoctorId = '';
   filterStatus: '' | 'available' | 'booked' | 'cancelled' = '';
 
@@ -278,14 +278,22 @@ export class SlotsPageComponent {
       return;
     }
 
+    if ((this.newPrestBasePrice ?? 0) < 0) {
+      this.prestazioniError = 'Il prezzo base non può essere negativo.';
+      this.creatingPrestazione = false;
+      return;
+    }
+
     try {
       await firstValueFrom(this.api.createPrestazione({
         name,
         durationMinutes: this.newPrestDuration ?? null,
-        description: this.newPrestDescription?.trim() || null
+        description: this.newPrestDescription?.trim() || null,
+        basePrice: this.newPrestBasePrice ?? 0
       }));
       this.newPrestName = '';
       this.newPrestDuration = null;
+      this.newPrestBasePrice = null;
       this.newPrestDescription = '';
       await this.loadPrestazioni();
       this.toast = { type: 'success', message: 'Prestazione creata.' };
@@ -399,5 +407,10 @@ export class SlotsPageComponent {
     if (s === 'booked') return 'warning';
     if (s === 'cancelled') return 'danger';
     return '';
+  }
+
+  formatEuro(n: number | null | undefined) {
+    const v = Number(n ?? 0);
+    return `€ ${v.toFixed(2)}`;
   }
 }

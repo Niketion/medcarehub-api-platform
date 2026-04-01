@@ -8,6 +8,7 @@ public sealed record BookingDto(
     string SlotDoctorId,
     Guid? SlotPrestazioneId,
     string? SlotPrestazioneName,
+    decimal BookedPrice,
     string Status,
     DateTimeOffset CreatedAt
 );

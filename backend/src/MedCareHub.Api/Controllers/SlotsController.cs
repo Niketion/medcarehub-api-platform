@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using MedCareHub.Api.Auth;
 using MedCareHub.Api.Data;
 using MedCareHub.Api.DTOs;
@@ -6,7 +7,6 @@ using MedCareHub.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace MedCareHub.Api.Controllers;
 
@@ -25,7 +25,11 @@ public sealed class SlotsController : ControllerBase
 
     [HttpGet]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<SlotDto>>> Get([FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to, [FromQuery] string? doctorId, CancellationToken ct)
+    public async Task<ActionResult<IEnumerable<SlotDto>>> Get(
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        [FromQuery] string? doctorId,
+        CancellationToken ct)
     {
         var q = _db.Slots.AsNoTracking()
             .Include(s => s.Prestazione)
@@ -42,15 +46,7 @@ public sealed class SlotsController : ControllerBase
 
         var items = await q.OrderBy(s => s.StartsAt).Take(500).ToListAsync(ct);
 
-        return Ok(items.Select(s => new SlotDto(
-            s.Id,
-            s.DoctorId,
-            s.PrestazioneId,
-            s.Prestazione?.Name,
-            s.StartsAt,
-            s.EndsAt,
-            s.Status
-        )));
+        return Ok(items.Select(ToDto));
     }
 
     [HttpPost]
@@ -61,6 +57,7 @@ public sealed class SlotsController : ControllerBase
             return BadRequest(new { error = "EndsAt must be after StartsAt" });
 
         Prestazione? prestazione = null;
+
         if (req.PrestazioneId.HasValue)
         {
             prestazione = await _db.Prestazioni.FirstOrDefaultAsync(p => p.Id == req.PrestazioneId.Value, ct);
@@ -83,17 +80,29 @@ public sealed class SlotsController : ControllerBase
         var actorSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
         var actorRole = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
 
-        await _audit.LogAsync("slot_created", actorSub, actorRole, AuditOutcome.Success, "slot", slot.Id.ToString(),
-            new { slot.DoctorId, slot.StartsAt, slot.EndsAt, slot.PrestazioneId }, ct);
+        await _audit.LogAsync(
+            "slot_created",
+            actorSub,
+            actorRole,
+            AuditOutcome.Success,
+            "slot",
+            slot.Id.ToString(),
+            new { slot.DoctorId, slot.StartsAt, slot.EndsAt, slot.PrestazioneId },
+            ct);
 
-        return CreatedAtAction(nameof(Get), new { id = slot.Id }, new SlotDto(
-            slot.Id,
-            slot.DoctorId,
-            slot.PrestazioneId,
-            prestazione?.Name,
-            slot.StartsAt,
-            slot.EndsAt,
-            slot.Status
-        ));
+        slot.Prestazione = prestazione;
+
+        return CreatedAtAction(nameof(Get), new { id = slot.Id }, ToDto(slot));
     }
+
+    private static SlotDto ToDto(Slot s) => new(
+        s.Id,
+        s.DoctorId,
+        s.PrestazioneId,
+        s.Prestazione?.Name,
+        s.Prestazione?.BasePrice,
+        s.StartsAt,
+        s.EndsAt,
+        s.Status
+    );
 }

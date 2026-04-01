@@ -14,11 +14,6 @@ import { AuthService } from '../core/auth.service';
           <h1>Portale MedCare Hub</h1>
           <div class="sub">Accesso sicuro (Keycloak) e gestione end-to-end: slot → prenotazioni → referti.</div>
         </div>
-
-        <div class="row" style="justify-content:flex-end;">
-          <button class="btn primary" *ngIf="!auth.isAuthenticated()" (click)="auth.login()">Login con Keycloak</button>
-          <button class="btn" *ngIf="auth.isAuthenticated()" (click)="auth.logout()">Logout</button>
-        </div>
       </div>
 
       <div style="height:14px;"></div>
@@ -58,14 +53,14 @@ import { AuthService } from '../core/auth.service';
 
             <div style="height:10px;"></div>
             <div class="help">
-              Le pagine si adattano al ruolo: il paziente prenota e scarica, lo staff crea slot e carica referti.
+              Le pagine si adattano al ruolo: il paziente prenota e scarica, lo staff crea slot, valorizza prestazioni e consulta la dashboard economica.
             </div>
           </ng-container>
 
           <ng-template #notLogged>
             <div class="empty">
               <div class="empty-title">Non sei autenticato</div>
-              <div class="empty-sub">Esegui il login per usare le funzionalità del portale.</div>
+              <div class="empty-sub">Esegui il login dalla navbar per usare le funzionalità del portale.</div>
             </div>
           </ng-template>
         </div>

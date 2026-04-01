@@ -1,31 +1,35 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 
-import { ApiClient, BookingDto, ReportDto, SlotDto } from '../core/api-client';
+import {
+  ApiClient,
+  BookingDto,
+  DashboardEconomicsDto,
+  DoctorEconomicsDto,
+  PrestazioneEconomicsDto,
+  ReportDto,
+  SlotDto
+} from '../core/api-client';
 import { AuthService } from '../core/auth.service';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule],
   template: `
   <div class="page">
     <div class="page-head">
       <div class="page-title">
         <h1>Dashboard</h1>
         <div class="sub">
-          Panoramica operativa (slot, prenotazioni e referti) con filtri per periodo e medico.
+          Panoramica operativa ed economica con filtri per periodo e medico.
         </div>
       </div>
 
       <div class="row" style="justify-content:flex-end;">
-        <a class="btn" routerLink="/slots">Slot</a>
-        <a class="btn" routerLink="/bookings" *ngIf="auth.hasRole('patient')">Prenotazioni</a>
-        <a class="btn" routerLink="/reports">Referti</a>
-        <button class="btn primary" (click)="load()" [disabled]="loading">
-          {{ loading ? 'Aggiorno…' : 'Aggiorna' }}
+        <button class="btn primary" (click)="load()" [disabled]="loading || economicsLoading">
+          {{ loading || economicsLoading ? 'Aggiorno…' : 'Aggiorna' }}
         </button>
       </div>
     </div>
@@ -38,7 +42,6 @@ import { AuthService } from '../core/auth.service';
       <button class="btn" (click)="error=null">Chiudi</button>
     </div>
 
-    <!-- FILTRI -->
     <div class="card">
       <div class="page-head">
         <div class="page-title">
@@ -73,7 +76,6 @@ import { AuthService } from '../core/auth.service';
       </div>
     </div>
 
-    <!-- KPI -->
     <div class="grid-3">
       <div class="panel kpi">
         <div class="kpi-label">Slot (periodo)</div>
@@ -125,7 +127,133 @@ import { AuthService } from '../core/auth.service';
       </div>
     </div>
 
-    <!-- LISTE -->
+    <div class="card" *ngIf="isStaff()">
+      <div class="page-head">
+        <div class="page-title">
+          <h2 style="font-size:18px;">Dashboard economica</h2>
+          <div class="sub">Indicatori gestionali basati sul prezzo storicizzato della prenotazione.</div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <div class="small muted" *ngIf="economicsError">{{ economicsError }}</div>
+
+      <ng-container *ngIf="economics as eco">
+        <div class="grid-3">
+          <div class="panel kpi">
+            <div class="kpi-label">Incasso stimato</div>
+            <div class="kpi-value">{{ formatEuro(eco.estimatedRevenue) }}</div>
+            <div class="small muted" style="margin-top:8px;">
+              Prenotazioni confermate
+            </div>
+          </div>
+
+          <div class="panel kpi">
+            <div class="kpi-label">Incasso realizzato</div>
+            <div class="kpi-value">{{ formatEuro(eco.realizedRevenue) }}</div>
+            <div class="small muted" style="margin-top:8px;">
+              Prenotazioni completate
+            </div>
+          </div>
+
+          <div class="panel kpi">
+            <div class="kpi-label">Ticket medio</div>
+            <div class="kpi-value">{{ formatEuro(eco.averageTicket) }}</div>
+            <div class="small muted" style="margin-top:8px;">
+              Media confermate + completate
+            </div>
+          </div>
+        </div>
+
+        <div style="height:16px;"></div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="page-head">
+              <div class="page-title">
+                <h2 style="font-size:18px;">Per medico</h2>
+                <div class="sub">Volumi e ricavi per DoctorId.</div>
+              </div>
+            </div>
+
+            <div style="height:12px;"></div>
+
+            <div class="table-wrap" *ngIf="economicsByDoctor.length; else emptyDoctorEco">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>DoctorId</th>
+                    <th>Conf.</th>
+                    <th>Compl.</th>
+                    <th>Stimato</th>
+                    <th>Realizzato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let d of economicsByDoctor">
+                    <td>{{ d.doctorId }}</td>
+                    <td>{{ d.confirmedBookings }}</td>
+                    <td>{{ d.completedBookings }}</td>
+                    <td>{{ formatEuro(d.estimatedRevenue) }}</td>
+                    <td>{{ formatEuro(d.realizedRevenue) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <ng-template #emptyDoctorEco>
+              <div class="empty">
+                <div class="empty-title">Nessun dato economico</div>
+                <div class="empty-sub">Non ci sono risultati per i filtri selezionati.</div>
+              </div>
+            </ng-template>
+          </div>
+
+          <div class="card">
+            <div class="page-head">
+              <div class="page-title">
+                <h2 style="font-size:18px;">Per prestazione</h2>
+                <div class="sub">Volumi e ricavi per tipologia di servizio.</div>
+              </div>
+            </div>
+
+            <div style="height:12px;"></div>
+
+            <div class="table-wrap" *ngIf="economicsByPrestazione.length; else emptyPrestEco">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Prestazione</th>
+                    <th>Conf.</th>
+                    <th>Compl.</th>
+                    <th>Stimato</th>
+                    <th>Realizzato</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let p of economicsByPrestazione">
+                    <td>{{ p.prestazioneName }}</td>
+                    <td>{{ p.confirmedBookings }}</td>
+                    <td>{{ p.completedBookings }}</td>
+                    <td>{{ formatEuro(p.estimatedRevenue) }}</td>
+                    <td>{{ formatEuro(p.realizedRevenue) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <ng-template #emptyPrestEco>
+              <div class="empty">
+                <div class="empty-title">Nessun dato economico</div>
+                <div class="empty-sub">Non ci sono prestazioni valorizzate nel periodo.</div>
+              </div>
+            </ng-template>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+
     <div class="grid-2">
       <div class="card">
         <div class="page-head">
@@ -153,6 +281,7 @@ import { AuthService } from '../core/auth.service';
                   <th>Quando</th>
                   <th>DoctorId</th>
                   <th>Prestazione</th>
+                  <th>Valore</th>
                   <th>Stato</th>
                   <th style="width:180px;" *ngIf="isStaff()"></th>
                 </tr>
@@ -162,6 +291,7 @@ import { AuthService } from '../core/auth.service';
                   <td>{{ b.slotStartsAt | date:'dd/MM/yyyy HH:mm' }} → {{ b.slotEndsAt | date:'HH:mm' }}</td>
                   <td>{{ b.slotDoctorId }}</td>
                   <td>{{ b.slotPrestazioneName || '-' }}</td>
+                  <td>{{ formatEuro(b.bookedPrice) }}</td>
                   <td>
                     <span class="badge" [ngClass]="bookingBadgeClass(b.status)">
                       {{ bookingLabel(b.status) }}
@@ -252,6 +382,12 @@ export class DashboardPageComponent {
   loading = false;
   error: string | null = null;
 
+  economicsLoading = false;
+  economicsError: string | null = null;
+  economics: DashboardEconomicsDto | null = null;
+  economicsByDoctor: DoctorEconomicsDto[] = [];
+  economicsByPrestazione: PrestazioneEconomicsDto[] = [];
+
   slots: SlotDto[] = [];
   bookings: BookingDto[] = [];
   reports: ReportDto[] = [];
@@ -297,6 +433,7 @@ export class DashboardPageComponent {
     this.loading = true;
     this.error = null;
     this.completeError = null;
+    this.economicsError = null;
 
     try {
       this.slots = await firstValueFrom(this.api.getSlots());
@@ -307,19 +444,49 @@ export class DashboardPageComponent {
         ? await firstValueFrom(this.api.getAllReports())
         : await firstValueFrom(this.api.myReports());
 
-      this.applyFilters();
+      this.applyFilters(false);
+
+      if (this.isStaff()) {
+        await this.loadEconomics();
+      }
     } catch {
       this.error = 'Errore caricamento dati (permessi o backend).';
       this.slots = [];
       this.bookings = [];
       this.reports = [];
-      this.applyFilters();
+      this.applyFilters(false);
     } finally {
       this.loading = false;
     }
   }
 
-  applyFilters() {
+  async loadEconomics() {
+    if (!this.isStaff()) return;
+
+    this.economicsLoading = true;
+    this.economicsError = null;
+
+    try {
+      const from = this.fromDate ? new Date(this.fromDate + 'T00:00:00').toISOString() : null;
+      const to = this.toDate ? new Date(this.toDate + 'T23:59:59').toISOString() : null;
+
+      this.economics = await firstValueFrom(
+        this.api.getEconomics(from, to, this.doctorQuery || null)
+      );
+
+      this.economicsByDoctor = this.economics.byDoctor ?? [];
+      this.economicsByPrestazione = this.economics.byPrestazione ?? [];
+    } catch {
+      this.economics = null;
+      this.economicsByDoctor = [];
+      this.economicsByPrestazione = [];
+      this.economicsError = 'Errore caricamento KPI economici.';
+    } finally {
+      this.economicsLoading = false;
+    }
+  }
+
+  applyFilters(reloadEconomics = true) {
     const from = this.fromDate ? new Date(this.fromDate + 'T00:00:00') : null;
     const to = this.toDate ? new Date(this.toDate + 'T23:59:59') : null;
     const dq = this.doctorQuery.trim().toLowerCase();
@@ -344,27 +511,23 @@ export class DashboardPageComponent {
 
     this.vReports = this.reports;
 
-    // KPI slots
     this.slotTotal = this.vSlots.length;
     this.slotAvailable = this.vSlots.filter(s => (s.status ?? '').toLowerCase() === 'available').length;
     this.slotBooked = this.vSlots.filter(s => (s.status ?? '').toLowerCase() === 'booked').length;
     this.slotCancelled = this.vSlots.filter(s => (s.status ?? '').toLowerCase() === 'cancelled').length;
     this.slotAvailabilityPct = this.slotTotal ? (this.slotAvailable / this.slotTotal) * 100 : 0;
 
-    // KPI bookings
     this.bookingTotal = this.vBookings.length;
     this.bookingConfirmed = this.vBookings.filter(b => (b.status ?? '').toLowerCase() === 'confirmed').length;
     this.bookingCancelled = this.vBookings.filter(b => (b.status ?? '').toLowerCase() === 'cancelled').length;
     this.bookingCompleted = this.vBookings.filter(b => (b.status ?? '').toLowerCase() === 'completed').length;
     this.bookingConfirmedPct = this.bookingTotal ? (this.bookingConfirmed / this.bookingTotal) * 100 : 0;
 
-    // KPI reports
     this.reportTotal = this.vReports.length;
     const now = new Date();
     const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     this.reportLast30 = this.vReports.filter(r => new Date(r.createdAt) >= d30).length;
 
-    // lists
     const upcoming = this.vBookings
       .filter(b => (b.status ?? '').toLowerCase() !== 'cancelled')
       .slice()
@@ -376,6 +539,10 @@ export class DashboardPageComponent {
       .slice()
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
       .slice(0, 10);
+
+    if (reloadEconomics && this.isStaff()) {
+      void this.loadEconomics();
+    }
   }
 
   resetFilters() {
@@ -425,5 +592,10 @@ export class DashboardPageComponent {
     let i = 0;
     while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
     return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+  }
+
+  formatEuro(n: number | null | undefined) {
+    const v = Number(n ?? 0);
+    return `€ ${v.toFixed(2)}`;
   }
 }

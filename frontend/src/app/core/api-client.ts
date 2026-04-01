@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { ConfigService } from './config.service';
 import { Observable } from 'rxjs';
 
@@ -8,6 +8,7 @@ export interface PrestazioneDto {
   name: string;
   durationMinutes?: number | null;
   description?: string | null;
+  basePrice: number;
   createdAt: string;
 }
 
@@ -16,6 +17,7 @@ export interface SlotDto {
   doctorId: string;
   prestazioneId?: string | null;
   prestazioneName?: string | null;
+  prestazioneBasePrice?: number | null;
   startsAt: string;
   endsAt: string;
   status: string;
@@ -29,6 +31,7 @@ export interface BookingDto {
   slotDoctorId: string;
   slotPrestazioneId?: string | null;
   slotPrestazioneName?: string | null;
+  bookedPrice: number;
   status: string;
   createdAt: string;
 }
@@ -49,6 +52,33 @@ export interface ReportDto {
   createdAt: string;
 }
 
+export interface DoctorEconomicsDto {
+  doctorId: string;
+  confirmedBookings: number;
+  completedBookings: number;
+  estimatedRevenue: number;
+  realizedRevenue: number;
+}
+
+export interface PrestazioneEconomicsDto {
+  prestazioneId?: string | null;
+  prestazioneName: string;
+  confirmedBookings: number;
+  completedBookings: number;
+  estimatedRevenue: number;
+  realizedRevenue: number;
+}
+
+export interface DashboardEconomicsDto {
+  estimatedRevenue: number;
+  realizedRevenue: number;
+  averageTicket: number;
+  confirmedBookings: number;
+  completedBookings: number;
+  byDoctor: DoctorEconomicsDto[];
+  byPrestazione: PrestazioneEconomicsDto[];
+}
+
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
   constructor(private http: HttpClient, private cfg: ConfigService) {}
@@ -57,25 +87,32 @@ export class ApiClient {
     return this.cfg.required.apiBaseUrl.replace(/\/$/, '');
   }
 
-  // Prestazioni
   getPrestazioni(): Observable<PrestazioneDto[]> {
     return this.http.get<PrestazioneDto[]>(`${this.base}/prestazioni`);
   }
 
-  createPrestazione(req: { name: string; durationMinutes?: number | null; description?: string | null }): Observable<PrestazioneDto> {
+  createPrestazione(req: {
+    name: string;
+    durationMinutes?: number | null;
+    description?: string | null;
+    basePrice: number;
+  }): Observable<PrestazioneDto> {
     return this.http.post<PrestazioneDto>(`${this.base}/prestazioni`, req);
   }
 
-  // Slots
   getSlots(): Observable<SlotDto[]> {
     return this.http.get<SlotDto[]>(`${this.base}/slots`);
   }
 
-  createSlot(req: { doctorId: string; prestazioneId?: string | null; startsAt: string; endsAt: string; }): Observable<any> {
+  createSlot(req: {
+    doctorId: string;
+    prestazioneId?: string | null;
+    startsAt: string;
+    endsAt: string;
+  }): Observable<any> {
     return this.http.post(`${this.base}/slots`, req);
   }
 
-  // Bookings
   myBookings(): Observable<BookingDto[]> {
     return this.http.get<BookingDto[]>(`${this.base}/bookings/my`);
   }
@@ -96,7 +133,6 @@ export class ApiClient {
     return this.http.post<void>(`${this.base}/bookings/${id}/complete`, {});
   }
 
-  // Reports
   myReports(): Observable<ReportDto[]> {
     return this.http.get<ReportDto[]>(`${this.base}/reports/my`);
   }
@@ -116,5 +152,15 @@ export class ApiClient {
 
   downloadReport(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/reports/${id}/download`, { responseType: 'blob' });
+  }
+
+  getEconomics(from?: string | null, to?: string | null, doctorId?: string | null): Observable<DashboardEconomicsDto> {
+    let params = new HttpParams();
+
+    if (from?.trim()) params = params.set('from', from.trim());
+    if (to?.trim()) params = params.set('to', to.trim());
+    if (doctorId?.trim()) params = params.set('doctorId', doctorId.trim());
+
+    return this.http.get<DashboardEconomicsDto>(`${this.base}/analytics/economics`, { params });
   }
 }

@@ -1,19 +1,20 @@
+# Build stage
 FROM node:20-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci || npm install
+COPY package*.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build:prod
 
-FROM nginx:1.27-alpine AS runtime
-WORKDIR /usr/share/nginx/html
-
-COPY --from=build /app/dist/medcarehub-web/browser/ ./
+# Runtime stage
+FROM nginx:1.27-alpine
 
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/99-env-config.sh /docker-entrypoint.d/99-env-config.sh
 RUN chmod +x /docker-entrypoint.d/99-env-config.sh
+
+COPY --from=build /app/dist/medcarehub-web/browser/ /usr/share/nginx/html/
 
 EXPOSE 80
