@@ -1,24 +1,20 @@
 #!/bin/sh
 set -eu
 
-CFG="/usr/share/nginx/html/assets/config.json"
+CONFIG_PATH="/usr/share/nginx/html/assets/config.json"
 
-mkdir -p "$(dirname "$CFG")"
+mkdir -p "$(dirname "$CONFIG_PATH")"
 
-API_BASE_URL="${API_BASE_URL:-/api}"
-KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8081}"
-KEYCLOAK_REALM="${KEYCLOAK_REALM:-medcarehub}"
-KEYCLOAK_CLIENT_ID="${KEYCLOAK_CLIENT_ID:-medcarehub-web}"
-
-cat > "$CFG" <<EOF
+cat > "$CONFIG_PATH" <<EOF
 {
-  "apiBaseUrl": "${API_BASE_URL}",
+  "apiBaseUrl": "${API_BASE_URL:-/api}",
   "keycloak": {
-    "url": "${KEYCLOAK_URL}",
-    "realm": "${KEYCLOAK_REALM}",
-    "clientId": "${KEYCLOAK_CLIENT_ID}"
+    "url": "${KEYCLOAK_URL:-http://localhost:8081}",
+    "realm": "${KEYCLOAK_REALM:-medcarehub}",
+    "clientId": "${KEYCLOAK_CLIENT_ID:-medcarehub-web}"
   }
 }
 EOF
 
-echo "[medcarehub-web] runtime config written: $CFG"
+echo "Generated runtime config at ${CONFIG_PATH}:"
+cat "$CONFIG_PATH"

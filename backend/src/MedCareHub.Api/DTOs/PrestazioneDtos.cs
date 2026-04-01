@@ -5,11 +5,13 @@ public sealed record PrestazioneDto(
     string Name,
     int? DurationMinutes,
     string? Description,
+    decimal BasePrice,
     DateTimeOffset CreatedAt
 );
 
 public sealed record CreatePrestazioneRequest(
     string Name,
     int? DurationMinutes,
-    string? Description
+    string? Description,
+    decimal BasePrice
 );

@@ -22,6 +22,10 @@ public sealed class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Name).HasMaxLength(120);
             e.HasIndex(x => x.Name).IsUnique();
+
+            e.Property(x => x.BasePrice)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(0m);
         });
 
         modelBuilder.Entity<Slot>(e =>
@@ -41,7 +45,6 @@ public sealed class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.PatientSub, x.CreatedAt });
 
-            // ONE active booking per slot (status != cancelled)
             e.HasIndex(x => x.SlotId)
                 .IsUnique()
                 .HasFilter($"\"Status\" <> '{BookingStatus.Cancelled}'");
@@ -52,6 +55,10 @@ public sealed class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict);
 
             e.Property(x => x.Status).HasMaxLength(30);
+
+            e.Property(x => x.BookedPrice)
+                .HasPrecision(10, 2)
+                .HasDefaultValue(0m);
         });
 
         modelBuilder.Entity<Report>(e =>
@@ -83,7 +90,5 @@ public sealed class AppDbContext : DbContext
             e.Property(x => x.ResourceType).HasMaxLength(80);
             e.Property(x => x.ResourceId).HasMaxLength(80);
         });
-
-        base.OnModelCreating(modelBuilder);
     }
 }
