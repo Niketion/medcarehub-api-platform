@@ -15,6 +15,16 @@ namespace MedCareHub.Api.Controllers;
 [Route("api/reports")]
 public sealed class ReportsController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedReportExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".pdf"
+    };
+
+    private static readonly HashSet<string> AllowedReportContentTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf"
+    };
+
     private readonly AppDbContext _db;
     private readonly IReportStorage _storage;
     private readonly IAuditService _audit;
@@ -37,6 +47,9 @@ public sealed class ReportsController : ControllerBase
         if (request.File is null || request.File.Length == 0)
             return BadRequest(new { error = "file is required" });
 
+        if (!IsAllowedReport(request.File))
+            return BadRequest(new { error = "Only PDF reports are allowed (.pdf, application/pdf)" });
+
         var booking = await _db.Bookings
             .Include(b => b.Slot)
             .FirstOrDefaultAsync(b => b.Id == request.BookingId, ct);
@@ -54,21 +67,28 @@ public sealed class ReportsController : ControllerBase
             BookingId = request.BookingId,
             PatientSub = patientSub,
             FileName = request.File.FileName,
-            ContentType = string.IsNullOrWhiteSpace(request.File.ContentType) ? "application/octet-stream" : request.File.ContentType,
+            ContentType = "application/pdf",
 
             ReportType = string.IsNullOrWhiteSpace(request.ReportType) ? null : request.ReportType.Trim(),
             DocumentDate = request.DocumentDate,
 
             AuthorSub = actorSub,
             AuthorRole = actorRole,
-            SignedAt = string.Equals(actorRole, Roles.Doctor, StringComparison.OrdinalIgnoreCase) || string.Equals(actorRole, Roles.Admin, StringComparison.OrdinalIgnoreCase)
-                ? DateTimeOffset.UtcNow
-                : null
+            SignedAt =
+                string.Equals(actorRole, Roles.Doctor, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(actorRole, Roles.Admin, StringComparison.OrdinalIgnoreCase)
+                    ? DateTimeOffset.UtcNow
+                    : null
         };
 
         await using var stream = request.File.OpenReadStream();
         var (bucket, objectKey, sizeBytes, contentType) = await _storage.UploadAsync(
-            stream, request.File.FileName, report.ContentType, patientSub, report.Id, ct);
+            stream,
+            request.File.FileName,
+            report.ContentType,
+            patientSub,
+            report.Id,
+            ct);
 
         report.Bucket = bucket;
         report.ObjectKey = objectKey;
@@ -78,7 +98,13 @@ public sealed class ReportsController : ControllerBase
         _db.Reports.Add(report);
         await _db.SaveChangesAsync(ct);
 
-        await _audit.LogAsync("report_uploaded", actorSub, actorRole, AuditOutcome.Success, "report", report.Id.ToString(),
+        await _audit.LogAsync(
+            "report_uploaded",
+            actorSub,
+            actorRole,
+            AuditOutcome.Success,
+            "report",
+            report.Id.ToString(),
             new
             {
                 request.BookingId,
@@ -88,7 +114,8 @@ public sealed class ReportsController : ControllerBase
                 report.ReportType,
                 report.DocumentDate,
                 report.SignedAt
-            }, ct);
+            },
+            ct);
 
         return Ok(new ReportDto(
             report.Id,
@@ -162,17 +189,41 @@ public sealed class ReportsController : ControllerBase
         if (!isOwner && !isStaff)
         {
             var actorRole = roles.FirstOrDefault();
-            await _audit.LogAsync("report_download_denied", sub, actorRole, AuditOutcome.Fail, "report", report.Id.ToString(),
-                new { owner = report.PatientSub }, ct);
+            await _audit.LogAsync(
+                "report_download_denied",
+                sub,
+                actorRole,
+                AuditOutcome.Fail,
+                "report",
+                report.Id.ToString(),
+                new { owner = report.PatientSub },
+                ct);
+
             return Forbid();
         }
 
         var (stream, contentType, fileName) = await _storage.DownloadAsync(report.Bucket, report.ObjectKey, report.FileName, ct);
 
         var role = roles.FirstOrDefault();
-        await _audit.LogAsync("report_downloaded", sub, role, AuditOutcome.Success, "report", report.Id.ToString(),
-            new { owner = report.PatientSub }, ct);
+        await _audit.LogAsync(
+            "report_downloaded",
+            sub,
+            role,
+            AuditOutcome.Success,
+            "report",
+            report.Id.ToString(),
+            new { owner = report.PatientSub },
+            ct);
 
         return File(stream, contentType, fileName);
+    }
+
+    private static bool IsAllowedReport(IFormFile file)
+    {
+        var extension = Path.GetExtension(file.FileName);
+        var contentType = (file.ContentType ?? string.Empty).Trim();
+
+        return AllowedReportExtensions.Contains(extension)
+            && AllowedReportContentTypes.Contains(contentType);
     }
 }

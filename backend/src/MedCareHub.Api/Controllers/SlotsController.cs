@@ -53,6 +53,11 @@ public sealed class SlotsController : ControllerBase
     [Authorize(Policy = Policies.Staff)]
     public async Task<ActionResult<SlotDto>> Create([FromBody] CreateSlotRequest req, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(req.DoctorId))
+            return BadRequest(new { error = "DoctorId is required" });
+
+        var normalizedDoctorId = req.DoctorId.Trim();
+
         if (req.EndsAt <= req.StartsAt)
             return BadRequest(new { error = "EndsAt must be after StartsAt" });
 
@@ -65,9 +70,21 @@ public sealed class SlotsController : ControllerBase
                 return BadRequest(new { error = "PrestazioneId not found" });
         }
 
+        var hasOverlap = await _db.Slots
+            .AsNoTracking()
+            .AnyAsync(s =>
+                s.DoctorId == normalizedDoctorId &&
+                s.Status != SlotStatus.Cancelled &&
+                req.StartsAt < s.EndsAt &&
+                req.EndsAt > s.StartsAt,
+                ct);
+
+        if (hasOverlap)
+            return Conflict(new { error = "Overlapping slot for the same doctor" });
+
         var slot = new Slot
         {
-            DoctorId = req.DoctorId,
+            DoctorId = normalizedDoctorId,
             PrestazioneId = req.PrestazioneId,
             StartsAt = req.StartsAt,
             EndsAt = req.EndsAt,
