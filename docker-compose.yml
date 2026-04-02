@@ -4,6 +4,7 @@ services:
   postgres:
     image: postgres:16
     container_name: medcarehub-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: medcarehub
       POSTGRES_USER: postgres
@@ -17,10 +18,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 5s
 
   minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
     container_name: medcarehub-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minioadmin
@@ -35,10 +38,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 5s
 
   keycloak-db:
     image: postgres:16
     container_name: medcarehub-keycloak-db
+    restart: unless-stopped
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -50,10 +55,12 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+      start_period: 5s
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.1.0
     container_name: medcarehub-keycloak
+    restart: unless-stopped
     command: start-dev --import-realm
     depends_on:
       keycloak-db:
@@ -78,19 +85,42 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+      start_period: 20s
 
-  # Full profile (API container)
-  api:
-    profiles: ["full"]
-    build:
-      context: .
-      dockerfile: backend/src/MedCareHub.Api/Dockerfile
-    container_name: medcarehub-api
+  api-tests:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    pull_policy: always
+    container_name: medcarehub-api-tests
+    working_dir: /src
+    volumes:
+      - ./:/src
+    command: ["dotnet", "test", "tests/MedCareHub.Api.Tests/MedCareHub.Api.Tests.csproj"]
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    profiles: ["full"]
+    build:
+      context: .
+      dockerfile: backend/src/MedCareHub.Api/Dockerfile
+      pull: true
+    container_name: medcarehub-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      api-tests:
+        condition: service_completed_successfully
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_URLS: http://+:8080
@@ -108,24 +138,25 @@ services:
       - "8080:8080"
 
   web:
-    build: ./frontend
+    profiles: ["full"]
+    build:
+      context: ./frontend
+      pull: true
     container_name: medcarehub-web
+    restart: unless-stopped
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      api:
+        condition: service_started
     ports:
       - "4200:80"
     environment:
       API_BASE_URL: "/api"
-      KEYCLOAK_URL: "http://localhost:8081"   
+      KEYCLOAK_URL: "http://localhost:8081"
       KEYCLOAK_REALM: "medcarehub"
       KEYCLOAK_CLIENT_ID: "medcarehub-web"
 
-  api-tests:
-    image: mcr.microsoft.com/dotnet/sdk:8.0
-    container_name: medcarehub-api-tests
-    working_dir: /src
-    volumes:
-      - ./:/src
-    command: ["dotnet", "test", "tests/MedCareHub.Api.Tests/MedCareHub.Api.Tests.csproj"]
-    
 volumes:
   pg-data:
   minio-data:
