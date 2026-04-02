@@ -11,6 +11,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedCareHub.Api.Controllers;
 
+/// <summary>
+/// Exposes endpoints for uploading, listing and downloading clinical reports.
+/// </summary>
+/// <remarks>
+/// Access rules:
+/// patients can list their own reports and download only owned reports;
+/// staff members can upload reports, list all reports and download any report.
+/// </remarks>
 [ApiController]
 [Route("api/reports")]
 public sealed class ReportsController : ControllerBase
@@ -29,6 +37,9 @@ public sealed class ReportsController : ControllerBase
     private readonly IReportStorage _storage;
     private readonly IAuditService _audit;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="ReportsController"/>.
+    /// </summary>
     public ReportsController(AppDbContext db, IReportStorage storage, IAuditService audit)
     {
         _db = db;
@@ -36,10 +47,26 @@ public sealed class ReportsController : ControllerBase
         _audit = audit;
     }
 
+    /// <summary>
+    /// Uploads a PDF report associated with an existing booking.
+    /// </summary>
+    /// <param name="request">Multipart payload containing booking id, optional metadata and file.</param>
+    /// <param name="ct">Cancellation token for the current request.</param>
+    /// <returns>The saved report metadata.</returns>
+    /// <response code="200">Report uploaded successfully.</response>
+    /// <response code="400">The request is invalid or the uploaded file is not an accepted PDF.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to upload reports.</response>
+    /// <response code="404">The target booking does not exist.</response>
     [HttpPost("upload")]
     [Authorize(Policy = Policies.Staff)]
     [RequestSizeLimit(20_000_000)]
     [Consumes("multipart/form-data")]
+    [ProducesResponseType(typeof(ReportDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ReportDto>> Upload(
         [FromForm] UploadReportRequest request,
         CancellationToken ct)
@@ -68,10 +95,8 @@ public sealed class ReportsController : ControllerBase
             PatientSub = patientSub,
             FileName = request.File.FileName,
             ContentType = "application/pdf",
-
             ReportType = string.IsNullOrWhiteSpace(request.ReportType) ? null : request.ReportType.Trim(),
             DocumentDate = request.DocumentDate,
-
             AuthorSub = actorSub,
             AuthorRole = actorRole,
             SignedAt =
@@ -132,8 +157,17 @@ public sealed class ReportsController : ControllerBase
         ));
     }
 
+    /// <summary>
+    /// Returns reports owned by the authenticated patient.
+    /// </summary>
+    /// <response code="200">Reports returned successfully.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to access patient reports.</response>
     [HttpGet("my")]
     [Authorize(Policy = Policies.Patient)]
+    [ProducesResponseType(typeof(IEnumerable<ReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IEnumerable<ReportDto>>> My(CancellationToken ct)
     {
         var patientSub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
@@ -151,8 +185,17 @@ public sealed class ReportsController : ControllerBase
         )));
     }
 
+    /// <summary>
+    /// Returns all reports visible to staff, optionally filtered by booking id.
+    /// </summary>
+    /// <response code="200">Reports returned successfully.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to access all reports.</response>
     [HttpGet]
     [Authorize(Policy = Policies.Staff)]
+    [ProducesResponseType(typeof(IEnumerable<ReportDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IEnumerable<ReportDto>>> GetAll([FromQuery] Guid? bookingId, CancellationToken ct)
     {
         var q = _db.Reports.AsNoTracking().AsQueryable();
@@ -172,8 +215,19 @@ public sealed class ReportsController : ControllerBase
         )));
     }
 
+    /// <summary>
+    /// Downloads a report if the caller is the owner patient or a staff member.
+    /// </summary>
+    /// <response code="200">Report downloaded successfully.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The caller is neither the owner nor a staff member.</response>
+    /// <response code="404">The requested report does not exist.</response>
     [HttpGet("{id:guid}/download")]
     [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Download([FromRoute] Guid id, CancellationToken ct)
     {
         var report = await _db.Reports.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -181,7 +235,10 @@ public sealed class ReportsController : ControllerBase
             return NotFound();
 
         var sub = User.FindFirstValue("sub") ?? User.Identity?.Name ?? "unknown";
-        var roles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var roles = User.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Select(c => c.Value)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var isStaff = roles.Contains(Roles.Operator) || roles.Contains(Roles.Doctor) || roles.Contains(Roles.Admin);
         var isOwner = string.Equals(report.PatientSub, sub, StringComparison.Ordinal);
@@ -218,6 +275,15 @@ public sealed class ReportsController : ControllerBase
         return File(stream, contentType, fileName);
     }
 
+    /// <summary>
+    /// Validates that the uploaded file is a real PDF.
+    /// </summary>
+    /// <remarks>
+    /// Validation is based on:
+    /// file extension,
+    /// declared content type,
+    /// and PDF magic header (%PDF-).
+    /// </remarks>
     private static async Task<bool> IsAllowedReportAsync(IFormFile file, CancellationToken ct)
     {
         var extension = Path.GetExtension(file.FileName);

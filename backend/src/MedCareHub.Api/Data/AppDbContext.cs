@@ -3,8 +3,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedCareHub.Api.Data;
 
+/// <summary>
+/// EF Core database context for the MedCareHub backend.
+/// </summary>
+/// <remarks>
+/// The model includes the core healthcare workflow entities:
+/// service catalog, doctor slots, patient bookings, reports and audit logs.
+/// </remarks>
 public sealed class AppDbContext : DbContext
 {
+    /// <summary>
+    /// Creates a new instance of <see cref="AppDbContext"/>.
+    /// </summary>
+    /// <param name="options">EF Core options configured by dependency injection.</param>
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Prestazione> Prestazioni => Set<Prestazione>();
@@ -13,6 +24,9 @@ public sealed class AppDbContext : DbContext
     public DbSet<Report> Reports => Set<Report>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    /// <summary>
+    /// Configures the relational model, constraints and indexes.
+    /// </summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("public");
@@ -31,7 +45,10 @@ public sealed class AppDbContext : DbContext
         modelBuilder.Entity<Slot>(e =>
         {
             e.HasKey(x => x.Id);
+
+            // Supports efficient filtering by doctor and time window.
             e.HasIndex(x => new { x.DoctorId, x.StartsAt, x.EndsAt });
+
             e.Property(x => x.Status).HasMaxLength(30);
 
             e.HasOne(x => x.Prestazione)
@@ -45,6 +62,9 @@ public sealed class AppDbContext : DbContext
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.PatientSub, x.CreatedAt });
 
+            // Business invariant:
+            // the same slot can have at most one active booking.
+            // Cancelled bookings are excluded so that a slot can be booked again after cancellation.
             e.HasIndex(x => x.SlotId)
                 .IsUnique()
                 .HasFilter($"\"Status\" <> '{BookingStatus.Cancelled}'");
@@ -69,6 +89,7 @@ public sealed class AppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.PatientSub, x.CreatedAt });
+
             e.HasOne(x => x.Booking)
                 .WithMany()
                 .HasForeignKey(x => x.BookingId)
@@ -87,7 +108,10 @@ public sealed class AppDbContext : DbContext
         modelBuilder.Entity<AuditLog>(e =>
         {
             e.HasKey(x => x.Id);
+
+            // Allows time-based consultation of audit history.
             e.HasIndex(x => x.Timestamp);
+
             e.Property(x => x.Event).HasMaxLength(120);
             e.Property(x => x.ActorSub).HasMaxLength(200);
             e.Property(x => x.Outcome).HasMaxLength(20);

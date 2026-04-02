@@ -10,6 +10,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedCareHub.Api.Controllers;
 
+/// <summary>
+/// Exposes endpoints for publishing and consulting medical availability slots.
+/// </summary>
+/// <remarks>
+/// All authenticated users can query slots.
+/// Only staff members can publish new slots.
+/// </remarks>
 [ApiController]
 [Route("api/slots")]
 public sealed class SlotsController : ControllerBase
@@ -17,14 +24,24 @@ public sealed class SlotsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IAuditService _audit;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="SlotsController"/>.
+    /// </summary>
     public SlotsController(AppDbContext db, IAuditService audit)
     {
         _db = db;
         _audit = audit;
     }
 
+    /// <summary>
+    /// Returns slots filtered by time range and doctor identifier.
+    /// </summary>
+    /// <response code="200">Slots returned successfully.</response>
+    /// <response code="401">Authentication is required.</response>
     [HttpGet]
     [Authorize]
+    [ProducesResponseType(typeof(IEnumerable<SlotDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IEnumerable<SlotDto>>> Get(
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
@@ -49,8 +66,28 @@ public sealed class SlotsController : ControllerBase
         return Ok(items.Select(ToDto));
     }
 
+    /// <summary>
+    /// Publishes a new slot for a doctor.
+    /// </summary>
+    /// <remarks>
+    /// The controller validates:
+    /// required doctor identifier,
+    /// coherent time interval,
+    /// optional linked service existence,
+    /// and overlap prevention for the same doctor.
+    /// </remarks>
+    /// <response code="201">Slot created successfully.</response>
+    /// <response code="400">The request payload is invalid.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to create slots.</response>
+    /// <response code="409">The requested slot overlaps with an existing active slot for the same doctor.</response>
     [HttpPost]
     [Authorize(Policy = Policies.Staff)]
+    [ProducesResponseType(typeof(SlotDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<SlotDto>> Create([FromBody] CreateSlotRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.DoctorId))
@@ -112,6 +149,9 @@ public sealed class SlotsController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = slot.Id }, ToDto(slot));
     }
 
+    /// <summary>
+    /// Maps a slot entity to the public API DTO.
+    /// </summary>
     private static SlotDto ToDto(Slot s) => new(
         s.Id,
         s.DoctorId,

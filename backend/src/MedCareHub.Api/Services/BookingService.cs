@@ -6,16 +6,31 @@ using Npgsql;
 
 namespace MedCareHub.Api.Services;
 
+/// <summary>
+/// Implements booking lifecycle operations with transactional guarantees.
+/// </summary>
+/// <remarks>
+/// The service protects booking consistency by combining:
+/// application-level checks,
+/// row locking on the target slot,
+/// and a database unique constraint on active bookings for the same slot.
+/// </remarks>
 public sealed class BookingService : IBookingService
 {
     private readonly AppDbContext _db;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="BookingService"/>.
+    /// </summary>
+    /// <param name="db">Application database context.</param>
     public BookingService(AppDbContext db) => _db = db;
 
+    /// <inheritdoc />
     public async Task<Booking> CreateBookingAsync(string patientSub, Guid slotId, CancellationToken ct)
     {
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
+        // Lock the slot row so that concurrent booking requests cannot confirm the same slot at the same time.
         var slot = await _db.Slots
             .FromSqlInterpolated($@"SELECT * FROM ""public"".""Slots"" WHERE ""Id"" = {slotId} FOR UPDATE")
             .SingleOrDefaultAsync(ct);
@@ -28,6 +43,8 @@ public sealed class BookingService : IBookingService
 
         decimal bookedPrice = 0m;
 
+        // The booked price is copied at booking time so that later price changes on the catalog
+        // do not alter the historical economic value of an existing booking.
         if (slot.PrestazioneId.HasValue)
         {
             bookedPrice = await _db.Prestazioni
@@ -56,6 +73,9 @@ public sealed class BookingService : IBookingService
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException pg && pg.SqlState == "23505")
         {
+            // PostgreSQL unique violation:
+            // the filtered unique index on SlotId guarantees that only one non-cancelled booking
+            // can exist for the same slot.
             throw new ConflictException("Slot already booked.");
         }
 
@@ -63,6 +83,7 @@ public sealed class BookingService : IBookingService
         return booking;
     }
 
+    /// <inheritdoc />
     public async Task CancelBookingAsync(string patientSub, Guid bookingId, CancellationToken ct)
     {
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -85,6 +106,7 @@ public sealed class BookingService : IBookingService
 
         booking.Status = BookingStatus.Cancelled;
 
+        // When an active booking is cancelled, the slot becomes bookable again.
         if (string.Equals(booking.Slot.Status, SlotStatus.Booked, StringComparison.OrdinalIgnoreCase))
             booking.Slot.Status = SlotStatus.Available;
 
@@ -92,6 +114,7 @@ public sealed class BookingService : IBookingService
         await tx.CommitAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task CompleteBookingAsync(Guid bookingId, CancellationToken ct)
     {
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
@@ -115,6 +138,7 @@ public sealed class BookingService : IBookingService
         await tx.CommitAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task MarkBookingPaidAsync(Guid bookingId, CancellationToken ct)
     {
         var booking = await _db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct);

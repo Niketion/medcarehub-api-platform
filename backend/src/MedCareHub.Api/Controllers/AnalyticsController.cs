@@ -8,19 +8,43 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedCareHub.Api.Controllers;
 
+/// <summary>
+/// Exposes dashboard-oriented analytical endpoints for staff users.
+/// </summary>
+/// <remarks>
+/// Current analytics focus on economics derived from bookings,
+/// including estimated revenue, realized revenue, paid revenue,
+/// average ticket, top doctors, top services and daily trends.
+/// </remarks>
 [ApiController]
 [Route("api/analytics")]
 public sealed class AnalyticsController : ControllerBase
 {
     private readonly AppDbContext _db;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="AnalyticsController"/>.
+    /// </summary>
     public AnalyticsController(AppDbContext db)
     {
         _db = db;
     }
 
+    /// <summary>
+    /// Returns booking-based economic indicators for the operational dashboard.
+    /// </summary>
+    /// <param name="from">Optional inclusive lower bound on slot start time.</param>
+    /// <param name="to">Optional inclusive upper bound on slot end time.</param>
+    /// <param name="doctorId">Optional doctor filter applied after loading the selected dataset.</param>
+    /// <param name="ct">Cancellation token for the current request.</param>
+    /// <response code="200">Economic indicators returned successfully.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to access analytics.</response>
     [HttpGet("economics")]
     [Authorize(Policy = Policies.Staff)]
+    [ProducesResponseType(typeof(DashboardEconomicsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<DashboardEconomicsDto>> GetEconomics(
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
@@ -64,7 +88,9 @@ public sealed class AnalyticsController : ControllerBase
         var confirmed = items.Where(IsConfirmed).ToList();
         var completed = items.Where(IsCompleted).ToList();
         var paid = items.Where(IsPaid).ToList();
-        var nonCancelled = items.Where(x => !string.Equals(x.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase)).ToList();
+        var nonCancelled = items
+            .Where(x => !string.Equals(x.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         var estimatedRevenue = confirmed.Sum(x => x.BookedPrice);
         var realizedRevenue = completed.Sum(x => x.BookedPrice);

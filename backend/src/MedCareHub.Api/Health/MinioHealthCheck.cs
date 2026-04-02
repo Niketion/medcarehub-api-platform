@@ -4,17 +4,26 @@ using Minio.DataModel.Args;
 
 namespace MedCareHub.Api.Health;
 
+/// <summary>
+/// Health check that verifies MinIO connectivity and bucket availability.
+/// </summary>
 public sealed class MinioHealthCheck : IHealthCheck
 {
     private readonly IMinioClientFactory _factory;
     private readonly IConfiguration _cfg;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="MinioHealthCheck"/>.
+    /// </summary>
     public MinioHealthCheck(IMinioClientFactory factory, IConfiguration cfg)
     {
         _factory = factory;
         _cfg = cfg;
     }
 
+    /// <summary>
+    /// Executes the MinIO health probe.
+    /// </summary>
     public async Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)

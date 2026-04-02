@@ -10,6 +10,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MedCareHub.Api.Controllers;
 
+/// <summary>
+/// Exposes endpoints for the catalog of medical services.
+/// </summary>
+/// <remarks>
+/// The service catalog is used to associate duration and base price
+/// with doctor slots and downstream bookings.
+/// </remarks>
 [ApiController]
 [Route("api/prestazioni")]
 public sealed class PrestazioniController : ControllerBase
@@ -17,14 +24,24 @@ public sealed class PrestazioniController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IAuditService _audit;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="PrestazioniController"/>.
+    /// </summary>
     public PrestazioniController(AppDbContext db, IAuditService audit)
     {
         _db = db;
         _audit = audit;
     }
 
+    /// <summary>
+    /// Returns the list of available medical services.
+    /// </summary>
+    /// <response code="200">Services returned successfully.</response>
+    /// <response code="401">Authentication is required.</response>
     [HttpGet]
     [Authorize]
+    [ProducesResponseType(typeof(IEnumerable<PrestazioneDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IEnumerable<PrestazioneDto>>> Get(CancellationToken ct)
     {
         var items = await _db.Prestazioni.AsNoTracking()
@@ -42,8 +59,19 @@ public sealed class PrestazioniController : ControllerBase
         )));
     }
 
+    /// <summary>
+    /// Creates a new medical service in the catalog.
+    /// </summary>
+    /// <response code="200">Service created successfully.</response>
+    /// <response code="400">The request payload is invalid.</response>
+    /// <response code="401">Authentication is required.</response>
+    /// <response code="403">The authenticated user is not allowed to create services.</response>
     [HttpPost]
     [Authorize(Policy = Policies.Staff)]
+    [ProducesResponseType(typeof(PrestazioneDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<PrestazioneDto>> Create([FromBody] CreatePrestazioneRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Name))

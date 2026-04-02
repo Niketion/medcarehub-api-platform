@@ -4,13 +4,33 @@ using MedCareHub.Api.Models;
 
 namespace MedCareHub.Api.Services;
 
+/// <summary>
+/// Persists audit events into the application database.
+/// </summary>
+/// <remarks>
+/// Audit records are stored synchronously as part of the application flow
+/// so that business-relevant actions remain traceable.
+/// </remarks>
 public sealed class AuditService : IAuditService
 {
     private readonly AppDbContext _db;
 
+    /// <summary>
+    /// Creates a new instance of <see cref="AuditService"/>.
+    /// </summary>
+    /// <param name="db">Application database context.</param>
     public AuditService(AppDbContext db) => _db = db;
 
-    public async Task LogAsync(string @event, string actorSub, string? actorRole, string outcome, string resourceType, string resourceId, object? metadata, CancellationToken ct)
+    /// <inheritdoc />
+    public async Task LogAsync(
+        string @event,
+        string actorSub,
+        string? actorRole,
+        string outcome,
+        string resourceType,
+        string resourceId,
+        object? metadata,
+        CancellationToken ct)
     {
         var item = new AuditLog
         {

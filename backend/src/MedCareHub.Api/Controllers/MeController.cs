@@ -4,10 +4,16 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace MedCareHub.Api.Controllers;
 
+/// <summary>
+/// Returns information about the authenticated user extracted from the access token.
+/// </summary>
 [ApiController]
 [Route("api/me")]
 public sealed class MeController : ControllerBase
 {
+    /// <summary>
+    /// Returns the current subject identifier, username, email and resolved roles.
+    /// </summary>
     [HttpGet]
     [Authorize]
     public IActionResult GetMe()
