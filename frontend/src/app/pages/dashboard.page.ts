@@ -10,6 +10,7 @@ import {
   DoctorEconomicsDto,
   PrestazioneEconomicsDto,
   ReportDto,
+  RevenueTrendPointDto,
   SlotDto
 } from '../core/api-client';
 import { AuthService } from '../core/auth.service';
@@ -17,363 +18,8 @@ import { AuthService } from '../core/auth.service';
 @Component({
   standalone: true,
   imports: [CommonModule, FormsModule],
-  template: `
-  <div class="page">
-    <div class="page-head">
-      <div class="page-title">
-        <h1>Dashboard</h1>
-        <div class="sub">
-          Panoramica operativa ed economica con filtri per periodo e medico.
-        </div>
-      </div>
-
-      <div class="row" style="justify-content:flex-end;">
-        <button class="btn primary" (click)="load()" [disabled]="loading || economicsLoading">
-          {{ loading || economicsLoading ? 'Aggiorno…' : 'Aggiorna' }}
-        </button>
-      </div>
-    </div>
-
-    <div *ngIf="error" class="alert error">
-      <div>
-        <div style="font-weight:800">Errore</div>
-        <div class="small muted" style="margin-top:2px;">{{ error }}</div>
-      </div>
-      <button class="btn" (click)="error=null">Chiudi</button>
-    </div>
-
-    <div class="card">
-      <div class="page-head">
-        <div class="page-title">
-          <h2 style="font-size:18px;">Filtri</h2>
-          <div class="sub">I KPI e le liste sotto rispettano i filtri selezionati.</div>
-        </div>
-      </div>
-
-      <div style="height:12px;"></div>
-
-      <div class="row" style="align-items:flex-end;">
-        <div class="field" style="min-width:220px; flex:0;">
-          <div class="label">Dal</div>
-          <input class="input" type="date" [(ngModel)]="fromDate" (change)="applyFilters()" />
-        </div>
-
-        <div class="field" style="min-width:220px; flex:0;">
-          <div class="label">Al</div>
-          <input class="input" type="date" [(ngModel)]="toDate" (change)="applyFilters()" />
-        </div>
-
-        <div class="field" style="min-width:280px; flex:1;">
-          <div class="label">DoctorId (contiene)</div>
-          <input class="input" [(ngModel)]="doctorQuery" (input)="applyFilters()" placeholder="es. dr-rossi" />
-        </div>
-
-        <button class="btn" (click)="resetFilters()">Reset</button>
-
-        <div class="small muted" style="margin-left:auto;">
-          {{ loading ? 'Caricamento…' : summaryLine() }}
-        </div>
-      </div>
-    </div>
-
-    <div class="grid-3">
-      <div class="panel kpi">
-        <div class="kpi-label">Slot (periodo)</div>
-        <div class="kpi-value">{{ slotTotal }}</div>
-        <div class="row" style="margin-top:8px;">
-          <span class="badge success">{{ slotAvailable }} disponibili</span>
-          <span class="badge warning">{{ slotBooked }} prenotati</span>
-          <span class="badge danger">{{ slotCancelled }} cancellati</span>
-        </div>
-
-        <div style="height:10px;"></div>
-        <div class="bar">
-          <div class="bar-fill" [style.width.%]="slotAvailabilityPct"></div>
-        </div>
-        <div class="small muted" style="margin-top:6px;">
-          Disponibilità: {{ slotAvailabilityPct | number:'1.0-0' }}%
-        </div>
-      </div>
-
-      <div class="panel kpi">
-        <div class="kpi-label">Prenotazioni (periodo)</div>
-        <div class="kpi-value">{{ bookingTotal }}</div>
-        <div class="row" style="margin-top:8px;">
-          <span class="badge success">{{ bookingConfirmed }} confermate</span>
-          <span class="badge warning">{{ bookingCompleted }} completate</span>
-          <span class="badge danger">{{ bookingCancelled }} annullate</span>
-        </div>
-
-        <div style="height:10px;"></div>
-        <div class="bar">
-          <div class="bar-fill" [style.width.%]="bookingConfirmedPct"></div>
-        </div>
-        <div class="small muted" style="margin-top:6px;">
-          Confermate: {{ bookingConfirmedPct | number:'1.0-0' }}%
-        </div>
-      </div>
-
-      <div class="panel kpi">
-        <div class="kpi-label">Referti</div>
-        <div class="kpi-value">{{ reportTotal }}</div>
-        <div class="row" style="margin-top:8px;">
-          <span class="badge">{{ reportLast30 }} ultimi 30 giorni</span>
-        </div>
-
-        <div style="height:10px;"></div>
-        <div class="small muted">
-          Vista: {{ isStaff() ? 'staff (tutti)' : 'paziente (miei)' }}
-        </div>
-      </div>
-    </div>
-
-    <div class="card" *ngIf="isStaff()">
-      <div class="page-head">
-        <div class="page-title">
-          <h2 style="font-size:18px;">Dashboard economica</h2>
-          <div class="sub">Indicatori gestionali basati sul prezzo storicizzato della prenotazione.</div>
-        </div>
-      </div>
-
-      <div style="height:12px;"></div>
-
-      <div class="small muted" *ngIf="economicsError">{{ economicsError }}</div>
-
-      <ng-container *ngIf="economics as eco">
-        <div class="grid-3">
-          <div class="panel kpi">
-            <div class="kpi-label">Incasso stimato</div>
-            <div class="kpi-value">{{ formatEuro(eco.estimatedRevenue) }}</div>
-            <div class="small muted" style="margin-top:8px;">
-              Prenotazioni confermate
-            </div>
-          </div>
-
-          <div class="panel kpi">
-            <div class="kpi-label">Incasso realizzato</div>
-            <div class="kpi-value">{{ formatEuro(eco.realizedRevenue) }}</div>
-            <div class="small muted" style="margin-top:8px;">
-              Prenotazioni completate
-            </div>
-          </div>
-
-          <div class="panel kpi">
-            <div class="kpi-label">Ticket medio</div>
-            <div class="kpi-value">{{ formatEuro(eco.averageTicket) }}</div>
-            <div class="small muted" style="margin-top:8px;">
-              Media confermate + completate
-            </div>
-          </div>
-        </div>
-
-        <div style="height:16px;"></div>
-
-        <div class="grid-2">
-          <div class="card">
-            <div class="page-head">
-              <div class="page-title">
-                <h2 style="font-size:18px;">Per medico</h2>
-                <div class="sub">Volumi e ricavi per DoctorId.</div>
-              </div>
-            </div>
-
-            <div style="height:12px;"></div>
-
-            <div class="table-wrap" *ngIf="economicsByDoctor.length; else emptyDoctorEco">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>DoctorId</th>
-                    <th>Conf.</th>
-                    <th>Compl.</th>
-                    <th>Stimato</th>
-                    <th>Realizzato</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let d of economicsByDoctor">
-                    <td>{{ d.doctorId }}</td>
-                    <td>{{ d.confirmedBookings }}</td>
-                    <td>{{ d.completedBookings }}</td>
-                    <td>{{ formatEuro(d.estimatedRevenue) }}</td>
-                    <td>{{ formatEuro(d.realizedRevenue) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <ng-template #emptyDoctorEco>
-              <div class="empty">
-                <div class="empty-title">Nessun dato economico</div>
-                <div class="empty-sub">Non ci sono risultati per i filtri selezionati.</div>
-              </div>
-            </ng-template>
-          </div>
-
-          <div class="card">
-            <div class="page-head">
-              <div class="page-title">
-                <h2 style="font-size:18px;">Per prestazione</h2>
-                <div class="sub">Volumi e ricavi per tipologia di servizio.</div>
-              </div>
-            </div>
-
-            <div style="height:12px;"></div>
-
-            <div class="table-wrap" *ngIf="economicsByPrestazione.length; else emptyPrestEco">
-              <table class="table">
-                <thead>
-                  <tr>
-                    <th>Prestazione</th>
-                    <th>Conf.</th>
-                    <th>Compl.</th>
-                    <th>Stimato</th>
-                    <th>Realizzato</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr *ngFor="let p of economicsByPrestazione">
-                    <td>{{ p.prestazioneName }}</td>
-                    <td>{{ p.confirmedBookings }}</td>
-                    <td>{{ p.completedBookings }}</td>
-                    <td>{{ formatEuro(p.estimatedRevenue) }}</td>
-                    <td>{{ formatEuro(p.realizedRevenue) }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <ng-template #emptyPrestEco>
-              <div class="empty">
-                <div class="empty-title">Nessun dato economico</div>
-                <div class="empty-sub">Non ci sono prestazioni valorizzate nel periodo.</div>
-              </div>
-            </ng-template>
-          </div>
-        </div>
-      </ng-container>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <div class="page-head">
-          <div class="page-title">
-            <h2 style="font-size:18px;">Prossimi appuntamenti</h2>
-            <div class="sub">Ordinati per data/ora crescente.</div>
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <ng-container *ngIf="loading; else upcomingBlock">
-          <div class="stack">
-            <div class="skeleton" style="height:18px; width:55%;"></div>
-            <div class="skeleton" style="height:14px; width:85%;"></div>
-            <div class="skeleton" style="height:14px; width:76%;"></div>
-          </div>
-        </ng-container>
-
-        <ng-template #upcomingBlock>
-          <div class="table-wrap" *ngIf="upcomingBookings.length; else emptyUpcoming">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Quando</th>
-                  <th>DoctorId</th>
-                  <th>Prestazione</th>
-                  <th>Valore</th>
-                  <th>Stato</th>
-                  <th style="width:180px;" *ngIf="isStaff()"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let b of upcomingBookings; trackBy: trackById">
-                  <td>{{ b.slotStartsAt | date:'dd/MM/yyyy HH:mm' }} → {{ b.slotEndsAt | date:'HH:mm' }}</td>
-                  <td>{{ b.slotDoctorId }}</td>
-                  <td>{{ b.slotPrestazioneName || '-' }}</td>
-                  <td>{{ formatEuro(b.bookedPrice) }}</td>
-                  <td>
-                    <span class="badge" [ngClass]="bookingBadgeClass(b.status)">
-                      {{ bookingLabel(b.status) }}
-                    </span>
-                  </td>
-                  <td *ngIf="isStaff()">
-                    <button class="btn"
-                      (click)="complete(b)"
-                      [disabled]="completingId===b.id || (b.status||'').toLowerCase()!=='confirmed'">
-                      {{ completingId===b.id ? 'Completo…' : 'Completa' }}
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <ng-template #emptyUpcoming>
-            <div class="empty">
-              <div class="empty-title">Nessun appuntamento in arrivo</div>
-              <div class="empty-sub">Prova a modificare i filtri, oppure crea/prenota uno slot.</div>
-            </div>
-          </ng-template>
-        </ng-template>
-
-        <div class="small muted" *ngIf="completeError" style="margin-top:10px;">{{ completeError }}</div>
-      </div>
-
-      <div class="card">
-        <div class="page-head">
-          <div class="page-title">
-            <h2 style="font-size:18px;">Ultimi referti</h2>
-            <div class="sub">Ordinati per creazione decrescente.</div>
-          </div>
-        </div>
-
-        <div style="height:12px;"></div>
-
-        <ng-container *ngIf="loading; else reportsBlock">
-          <div class="stack">
-            <div class="skeleton" style="height:18px; width:45%;"></div>
-            <div class="skeleton" style="height:14px; width:85%;"></div>
-            <div class="skeleton" style="height:14px; width:76%;"></div>
-          </div>
-        </ng-container>
-
-        <ng-template #reportsBlock>
-          <div class="table-wrap" *ngIf="recentReports.length; else emptyReports">
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Creato</th>
-                  <th>File</th>
-                  <th>Tipo</th>
-                  <th>Size</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr *ngFor="let r of recentReports; trackBy: trackById">
-                  <td>{{ r.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
-                  <td>
-                    <div style="font-weight:800">{{ r.fileName }}</div>
-                    <div class="small muted">{{ r.contentType }}</div>
-                  </td>
-                  <td>{{ r.reportType || '-' }}</td>
-                  <td>{{ formatBytes(r.sizeBytes) }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <ng-template #emptyReports>
-            <div class="empty">
-              <div class="empty-title">Nessun referto</div>
-              <div class="empty-sub">Quando viene caricato un documento, comparirà qui.</div>
-            </div>
-          </ng-template>
-        </ng-template>
-      </div>
-    </div>
-  </div>
-  `
+  templateUrl: './dashboard.page.html',
+  styleUrls: ['./dashboard.page.css']
 })
 export class DashboardPageComponent {
   private api = inject(ApiClient);
@@ -384,9 +30,11 @@ export class DashboardPageComponent {
 
   economicsLoading = false;
   economicsError: string | null = null;
+
   economics: DashboardEconomicsDto | null = null;
   economicsByDoctor: DoctorEconomicsDto[] = [];
   economicsByPrestazione: PrestazioneEconomicsDto[] = [];
+  revenueTrend: RevenueTrendPointDto[] = [];
 
   slots: SlotDto[] = [];
   bookings: BookingDto[] = [];
@@ -421,18 +69,25 @@ export class DashboardPageComponent {
   completingId: string | null = null;
   completeError: string | null = null;
 
+  payingId: string | null = null;
+  paymentError: string | null = null;
+
   trackById(_: number, x: any) { return x.id; }
+  trackByLabel(_: number, x: RevenueTrendPointDto) { return x.label; }
 
   isStaff() {
     return this.auth.hasRole('operator') || this.auth.hasRole('doctor') || this.auth.hasRole('admin');
   }
 
-  async ngOnInit() { await this.load(); }
+  async ngOnInit() {
+    await this.load();
+  }
 
   async load() {
     this.loading = true;
     this.error = null;
     this.completeError = null;
+    this.paymentError = null;
     this.economicsError = null;
 
     try {
@@ -476,10 +131,12 @@ export class DashboardPageComponent {
 
       this.economicsByDoctor = this.economics.byDoctor ?? [];
       this.economicsByPrestazione = this.economics.byPrestazione ?? [];
+      this.revenueTrend = this.economics.revenueTrend ?? [];
     } catch {
       this.economics = null;
       this.economicsByDoctor = [];
       this.economicsByPrestazione = [];
+      this.revenueTrend = [];
       this.economicsError = 'Errore caricamento KPI economici.';
     } finally {
       this.economicsLoading = false;
@@ -572,6 +229,24 @@ export class DashboardPageComponent {
     return '';
   }
 
+  paymentLabel(status: string | null | undefined) {
+    const s = (status ?? '').toLowerCase();
+    if (s === 'paid') return 'Pagata';
+    return 'Da pagare';
+  }
+
+  paymentBadgeClass(status: string | null | undefined) {
+    const s = (status ?? '').toLowerCase();
+    if (s === 'paid') return 'success';
+    return 'warning';
+  }
+
+  canMarkPaid(b: BookingDto) {
+    const status = (b.status ?? '').toLowerCase();
+    const payment = (b.paymentStatus ?? '').toLowerCase();
+    return status !== 'cancelled' && payment !== 'paid';
+  }
+
   async complete(b: BookingDto) {
     this.completingId = b.id;
     this.completeError = null;
@@ -583,6 +258,52 @@ export class DashboardPageComponent {
     } finally {
       this.completingId = null;
     }
+  }
+
+  async markPaid(b: BookingDto) {
+    this.payingId = b.id;
+    this.paymentError = null;
+
+    try {
+      await firstValueFrom(this.api.markBookingPaid(b.id));
+      await this.load();
+    } catch (e: any) {
+      this.paymentError = e?.error?.detail || 'Errore aggiornamento pagamento.';
+    } finally {
+      this.payingId = null;
+    }
+  }
+
+  visibleTrend(): RevenueTrendPointDto[] {
+    return (this.revenueTrend ?? []).slice(-8);
+  }
+
+  trendMax() {
+    const values = this.visibleTrend().flatMap(x => [x.realizedRevenue ?? 0, x.paidRevenue ?? 0]);
+    const max = Math.max(...values, 0);
+    return max <= 0 ? 1 : max;
+  }
+
+  trendBarHeight(value: number) {
+    const max = this.trendMax();
+    return Math.max(6, (value / max) * 100);
+  }
+
+  outstandingRevenue() {
+    if (!this.economics) return 0;
+    return Math.max((this.economics.realizedRevenue ?? 0) - (this.economics.paidRevenue ?? 0), 0);
+  }
+
+  collectionRate() {
+    if (!this.economics) return 0;
+    const realized = Math.max(this.economics.realizedRevenue ?? 0, 0);
+    if (realized === 0) return 0;
+    return Math.max(0, Math.min(100, ((this.economics.paidRevenue ?? 0) / realized) * 100));
+  }
+
+  donutBackground() {
+    const paidPct = this.collectionRate();
+    return `conic-gradient(#111827 0 ${paidPct}%, rgba(17, 24, 39, 0.14) ${paidPct}% 100%)`;
   }
 
   formatBytes(n: number) {

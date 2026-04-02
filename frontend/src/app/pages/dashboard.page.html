@@ -1,0 +1,475 @@
+<div class="page">
+  <div class="page-head">
+    <div class="page-title">
+      <h1>Dashboard</h1>
+      <div class="sub">
+        Panoramica operativa ed economica con filtri per periodo e medico.
+      </div>
+    </div>
+
+    <div class="actions-right">
+      <button class="btn primary" (click)="load()" [disabled]="loading || economicsLoading">
+        {{ loading || economicsLoading ? 'Aggiorno…' : 'Aggiorna' }}
+      </button>
+    </div>
+  </div>
+
+  <div *ngIf="error" class="alert error">
+    <div>
+      <div style="font-weight:800">Errore</div>
+      <div class="small muted" style="margin-top:2px;">{{ error }}</div>
+    </div>
+    <button class="btn" (click)="error=null">Chiudi</button>
+  </div>
+
+  <div class="card">
+    <div class="page-head">
+      <div class="page-title">
+        <h2 style="font-size:18px;">Filtri</h2>
+        <div class="sub">I KPI e le liste sotto rispettano i filtri selezionati.</div>
+      </div>
+    </div>
+
+    <div style="height:12px;"></div>
+
+    <div class="filters-row">
+      <div class="field field-fixed">
+        <div class="label">Dal</div>
+        <input class="input" type="date" [(ngModel)]="fromDate" (change)="applyFilters()" />
+      </div>
+
+      <div class="field field-fixed">
+        <div class="label">Al</div>
+        <input class="input" type="date" [(ngModel)]="toDate" (change)="applyFilters()" />
+      </div>
+
+      <div class="field field-grow">
+        <div class="label">DoctorId (contiene)</div>
+        <input class="input" [(ngModel)]="doctorQuery" (input)="applyFilters()" placeholder="es. dr-rossi" />
+      </div>
+
+      <button class="btn" (click)="resetFilters()">Reset</button>
+
+      <div class="small muted filters-summary">
+        {{ loading ? 'Caricamento…' : summaryLine() }}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3">
+    <div class="panel kpi">
+      <div class="kpi-label">Slot (periodo)</div>
+      <div class="kpi-value">{{ slotTotal }}</div>
+      <div class="row" style="margin-top:8px;">
+        <span class="badge success">{{ slotAvailable }} disponibili</span>
+        <span class="badge warning">{{ slotBooked }} prenotati</span>
+        <span class="badge danger">{{ slotCancelled }} cancellati</span>
+      </div>
+
+      <div style="height:10px;"></div>
+      <div class="bar">
+        <div class="bar-fill" [style.width.%]="slotAvailabilityPct"></div>
+      </div>
+      <div class="small muted" style="margin-top:6px;">
+        Disponibilità: {{ slotAvailabilityPct | number:'1.0-0' }}%
+      </div>
+    </div>
+
+    <div class="panel kpi">
+      <div class="kpi-label">Prenotazioni (periodo)</div>
+      <div class="kpi-value">{{ bookingTotal }}</div>
+      <div class="row" style="margin-top:8px;">
+        <span class="badge success">{{ bookingConfirmed }} confermate</span>
+        <span class="badge warning">{{ bookingCompleted }} completate</span>
+        <span class="badge danger">{{ bookingCancelled }} annullate</span>
+      </div>
+
+      <div style="height:10px;"></div>
+      <div class="bar">
+        <div class="bar-fill" [style.width.%]="bookingConfirmedPct"></div>
+      </div>
+      <div class="small muted" style="margin-top:6px;">
+        Confermate: {{ bookingConfirmedPct | number:'1.0-0' }}%
+      </div>
+    </div>
+
+    <div class="panel kpi">
+      <div class="kpi-label">Referti</div>
+      <div class="kpi-value">{{ reportTotal }}</div>
+      <div class="row" style="margin-top:8px;">
+        <span class="badge">{{ reportLast30 }} ultimi 30 giorni</span>
+      </div>
+
+      <div style="height:10px;"></div>
+      <div class="small muted">
+        Vista: {{ isStaff() ? 'staff (tutti)' : 'paziente (miei)' }}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" *ngIf="isStaff()">
+    <div class="page-head">
+      <div class="page-title">
+        <h2 style="font-size:18px;">Dashboard economica</h2>
+        <div class="sub">Valore prenotato, erogato e incassato con dettaglio per medico e prestazione.</div>
+      </div>
+    </div>
+
+    <div style="height:12px;"></div>
+
+    <div class="small muted" *ngIf="economicsError">{{ economicsError }}</div>
+
+    <ng-container *ngIf="economics as eco">
+      <div class="grid-3">
+        <div class="panel kpi">
+          <div class="kpi-label">Stimato</div>
+          <div class="kpi-value">{{ formatEuro(eco.estimatedRevenue) }}</div>
+          <div class="small muted" style="margin-top:8px;">Prenotazioni confermate</div>
+        </div>
+
+        <div class="panel kpi">
+          <div class="kpi-label">Realizzato</div>
+          <div class="kpi-value">{{ formatEuro(eco.realizedRevenue) }}</div>
+          <div class="small muted" style="margin-top:8px;">Prestazioni completate</div>
+        </div>
+
+        <div class="panel kpi">
+          <div class="kpi-label">Incassato</div>
+          <div class="kpi-value">{{ formatEuro(eco.paidRevenue) }}</div>
+          <div class="small muted" style="margin-top:8px;">Prenotazioni pagate</div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <div class="grid-3">
+        <div class="panel kpi">
+          <div class="kpi-label">Ticket medio</div>
+          <div class="kpi-value">{{ formatEuro(eco.averageTicket) }}</div>
+          <div class="small muted" style="margin-top:8px;">Media prenotazioni non annullate</div>
+        </div>
+
+        <div class="panel kpi">
+          <div class="kpi-label">Pagate</div>
+          <div class="kpi-value">{{ eco.paidBookings }}</div>
+          <div class="small muted" style="margin-top:8px;">Prenotazioni con pagamento registrato</div>
+        </div>
+
+        <div class="panel kpi">
+          <div class="kpi-label">Completate</div>
+          <div class="kpi-value">{{ eco.completedBookings }}</div>
+          <div class="small muted" style="margin-top:8px;">Prestazioni erogate</div>
+        </div>
+      </div>
+
+      <div style="height:16px;"></div>
+
+      <div class="charts-grid">
+        <div class="card chart-card">
+          <div class="page-head">
+            <div class="page-title">
+              <h2 style="font-size:18px;">Incasso su completate</h2>
+              <div class="sub">Torta: quota già incassata rispetto al realizzato.</div>
+            </div>
+          </div>
+
+          <div style="height:12px;"></div>
+
+          <div class="donut-wrap">
+            <div class="donut" [style.background]="donutBackground()">
+              <div class="donut-center">
+                {{ collectionRate() | number:'1.0-0' }}%
+              </div>
+            </div>
+
+            <div class="legend">
+              <div class="legend-row">
+                <div class="legend-left">
+                  <span class="legend-swatch dark"></span>
+                  <span>Incassato</span>
+                </div>
+                <strong>{{ formatEuro(eco.paidRevenue) }}</strong>
+              </div>
+
+              <div class="legend-row">
+                <div class="legend-left">
+                  <span class="legend-swatch light"></span>
+                  <span>Da incassare</span>
+                </div>
+                <strong>{{ formatEuro(outstandingRevenue()) }}</strong>
+              </div>
+
+              <div class="small muted">
+                Il grafico considera solo le prenotazioni completate.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card chart-card">
+          <div class="page-head">
+            <div class="page-title">
+              <h2 style="font-size:18px;">Trend economico</h2>
+              <div class="sub">Ultimi 8 punti: scuro = realizzato · chiaro = incassato</div>
+            </div>
+          </div>
+
+          <div style="height:12px;"></div>
+
+          <div *ngIf="visibleTrend().length; else emptyTrend" class="trend-grid">
+            <div class="trend-col" *ngFor="let p of visibleTrend(); trackBy: trackByLabel">
+              <div class="trend-bars">
+                <div
+                  class="trend-bar dark"
+                  [title]="'Realizzato: ' + formatEuro(p.realizedRevenue)"
+                  [style.height.%]="trendBarHeight(p.realizedRevenue)">
+                </div>
+                <div
+                  class="trend-bar light"
+                  [title]="'Incassato: ' + formatEuro(p.paidRevenue)"
+                  [style.height.%]="trendBarHeight(p.paidRevenue)">
+                </div>
+              </div>
+              <div class="small muted trend-label">{{ p.label }}</div>
+            </div>
+          </div>
+
+          <ng-template #emptyTrend>
+            <div class="empty">
+              <div class="empty-title">Nessun andamento disponibile</div>
+              <div class="empty-sub">Mancano dati economici nel periodo selezionato.</div>
+            </div>
+          </ng-template>
+        </div>
+      </div>
+
+      <div style="height:16px;"></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="page-head">
+            <div class="page-title">
+              <h2 style="font-size:18px;">Per medico</h2>
+              <div class="sub">Volumi e ricavi per DoctorId.</div>
+            </div>
+          </div>
+
+          <div style="height:12px;"></div>
+
+          <div class="table-wrap" *ngIf="economicsByDoctor.length; else emptyDoctorEco">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>DoctorId</th>
+                  <th>Conf.</th>
+                  <th>Compl.</th>
+                  <th>Pag.</th>
+                  <th>Stimato</th>
+                  <th>Realizzato</th>
+                  <th>Incassato</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let d of economicsByDoctor">
+                  <td>{{ d.doctorId }}</td>
+                  <td>{{ d.confirmedBookings }}</td>
+                  <td>{{ d.completedBookings }}</td>
+                  <td>{{ d.paidBookings }}</td>
+                  <td>{{ formatEuro(d.estimatedRevenue) }}</td>
+                  <td>{{ formatEuro(d.realizedRevenue) }}</td>
+                  <td>{{ formatEuro(d.paidRevenue) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <ng-template #emptyDoctorEco>
+            <div class="empty">
+              <div class="empty-title">Nessun dato economico</div>
+              <div class="empty-sub">Non ci sono risultati per i filtri selezionati.</div>
+            </div>
+          </ng-template>
+        </div>
+
+        <div class="card">
+          <div class="page-head">
+            <div class="page-title">
+              <h2 style="font-size:18px;">Per prestazione</h2>
+              <div class="sub">Volumi e ricavi per tipologia di servizio.</div>
+            </div>
+          </div>
+
+          <div style="height:12px;"></div>
+
+          <div class="table-wrap" *ngIf="economicsByPrestazione.length; else emptyPrestEco">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Prestazione</th>
+                  <th>Conf.</th>
+                  <th>Compl.</th>
+                  <th>Pag.</th>
+                  <th>Stimato</th>
+                  <th>Realizzato</th>
+                  <th>Incassato</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let p of economicsByPrestazione">
+                  <td>{{ p.prestazioneName }}</td>
+                  <td>{{ p.confirmedBookings }}</td>
+                  <td>{{ p.completedBookings }}</td>
+                  <td>{{ p.paidBookings }}</td>
+                  <td>{{ formatEuro(p.estimatedRevenue) }}</td>
+                  <td>{{ formatEuro(p.realizedRevenue) }}</td>
+                  <td>{{ formatEuro(p.paidRevenue) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <ng-template #emptyPrestEco>
+            <div class="empty">
+              <div class="empty-title">Nessun dato economico</div>
+              <div class="empty-sub">Non ci sono prestazioni valorizzate nel periodo.</div>
+            </div>
+          </ng-template>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="page-head">
+        <div class="page-title">
+          <h2 style="font-size:18px;">Prossimi appuntamenti</h2>
+          <div class="sub">Ordinati per data/ora crescente.</div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <ng-container *ngIf="loading; else upcomingBlock">
+        <div class="stack">
+          <div class="skeleton" style="height:18px; width:55%;"></div>
+          <div class="skeleton" style="height:14px; width:85%;"></div>
+          <div class="skeleton" style="height:14px; width:76%;"></div>
+        </div>
+      </ng-container>
+
+      <ng-template #upcomingBlock>
+        <div class="table-wrap" *ngIf="upcomingBookings.length; else emptyUpcoming">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Quando</th>
+                <th>DoctorId</th>
+                <th>Prestazione</th>
+                <th>Valore</th>
+                <th>Stato</th>
+                <th>Pagamento</th>
+                <th style="width:220px;" *ngIf="isStaff()"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let b of upcomingBookings; trackBy: trackById">
+                <td>{{ b.slotStartsAt | date:'dd/MM/yyyy HH:mm' }} → {{ b.slotEndsAt | date:'HH:mm' }}</td>
+                <td>{{ b.slotDoctorId }}</td>
+                <td>{{ b.slotPrestazioneName || '-' }}</td>
+                <td>{{ formatEuro(b.bookedPrice) }}</td>
+                <td>
+                  <span class="badge" [ngClass]="bookingBadgeClass(b.status)">
+                    {{ bookingLabel(b.status) }}
+                  </span>
+                </td>
+                <td>
+                  <span class="badge" [ngClass]="paymentBadgeClass(b.paymentStatus)">
+                    {{ paymentLabel(b.paymentStatus) }}
+                  </span>
+                </td>
+                <td *ngIf="isStaff()">
+                  <div class="row actions-cell">
+                    <button class="btn"
+                      (click)="complete(b)"
+                      [disabled]="completingId===b.id || (b.status||'').toLowerCase()!=='confirmed'">
+                      {{ completingId===b.id ? 'Completo…' : 'Completa' }}
+                    </button>
+
+                    <button class="btn"
+                      (click)="markPaid(b)"
+                      [disabled]="payingId===b.id || !canMarkPaid(b)">
+                      {{ payingId===b.id ? 'Aggiorno…' : 'Segna pagata' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ng-template #emptyUpcoming>
+          <div class="empty">
+            <div class="empty-title">Nessun appuntamento in arrivo</div>
+            <div class="empty-sub">Prova a modificare i filtri, oppure crea/prenota uno slot.</div>
+          </div>
+        </ng-template>
+      </ng-template>
+
+      <div class="small muted" *ngIf="completeError" style="margin-top:10px;">{{ completeError }}</div>
+      <div class="small muted" *ngIf="paymentError" style="margin-top:10px;">{{ paymentError }}</div>
+    </div>
+
+    <div class="card">
+      <div class="page-head">
+        <div class="page-title">
+          <h2 style="font-size:18px;">Ultimi referti</h2>
+          <div class="sub">Ordinati per creazione decrescente.</div>
+        </div>
+      </div>
+
+      <div style="height:12px;"></div>
+
+      <ng-container *ngIf="loading; else reportsBlock">
+        <div class="stack">
+          <div class="skeleton" style="height:18px; width:45%;"></div>
+          <div class="skeleton" style="height:14px; width:85%;"></div>
+          <div class="skeleton" style="height:14px; width:76%;"></div>
+        </div>
+      </ng-container>
+
+      <ng-template #reportsBlock>
+        <div class="table-wrap" *ngIf="recentReports.length; else emptyReports">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Creato</th>
+                <th>File</th>
+                <th>Tipo</th>
+                <th>Size</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let r of recentReports; trackBy: trackById">
+                <td>{{ r.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                <td>
+                  <div style="font-weight:800">{{ r.fileName }}</div>
+                  <div class="small muted">{{ r.contentType }}</div>
+                </td>
+                <td>{{ r.reportType || '-' }}</td>
+                <td>{{ formatBytes(r.sizeBytes) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <ng-template #emptyReports>
+          <div class="empty">
+            <div class="empty-title">Nessun referto</div>
+            <div class="empty-sub">Quando viene caricato un documento, comparirà qui.</div>
+          </div>
+        </ng-template>
+      </ng-template>
+    </div>
+  </div>
+</div>

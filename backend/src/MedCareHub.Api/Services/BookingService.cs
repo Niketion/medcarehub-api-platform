@@ -44,7 +44,8 @@ public sealed class BookingService : IBookingService
             PatientSub = patientSub,
             SlotId = slotId,
             Status = BookingStatus.Confirmed,
-            BookedPrice = bookedPrice
+            BookedPrice = bookedPrice,
+            PaymentStatus = PaymentStatuses.Unpaid
         };
 
         _db.Bookings.Add(booking);
@@ -93,7 +94,11 @@ public sealed class BookingService : IBookingService
 
     public async Task CompleteBookingAsync(Guid bookingId, CancellationToken ct)
     {
-        var booking = await _db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+        await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+        var booking = await _db.Bookings
+            .Include(b => b.Slot)
+            .FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
         if (booking is null)
             throw new NotFoundException("Booking not found.");
@@ -105,6 +110,27 @@ public sealed class BookingService : IBookingService
             return;
 
         booking.Status = BookingStatus.Completed;
+
+        await _db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+    }
+
+    public async Task MarkBookingPaidAsync(Guid bookingId, CancellationToken ct)
+    {
+        var booking = await _db.Bookings.FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+
+        if (booking is null)
+            throw new NotFoundException("Booking not found.");
+
+        if (string.Equals(booking.Status, BookingStatus.Cancelled, StringComparison.OrdinalIgnoreCase))
+            throw new ConflictException("Cancelled bookings cannot be marked as paid.");
+
+        if (string.Equals(booking.PaymentStatus, PaymentStatuses.Paid, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        booking.PaymentStatus = PaymentStatuses.Paid;
+        booking.PaidAt = DateTimeOffset.UtcNow;
+
         await _db.SaveChangesAsync(ct);
     }
 }
