@@ -1,15 +1,18 @@
-using System.Security.Claims;
 using MedCareHub.Api.Auth;
 using MedCareHub.Api.Data;
+using MedCareHub.Api.Health;
 using MedCareHub.Api.Middleware;
-using MedCareHub.Api.Storage;
 using MedCareHub.Api.Services;
+using MedCareHub.Api.Storage;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Serilog;
-using Microsoft.AspNetCore.Authentication;
+using System.Security.Claims;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -88,7 +91,8 @@ builder.Services.AddScoped<IBookingService, BookingService>();
 builder.Services.AddTransient<ApiExceptionMiddleware>();
 
 builder.Services.AddHealthChecks()
-    .AddNpgSql(builder.Configuration.GetConnectionString("Default")!, name: "postgres");
+    .AddNpgSql(builder.Configuration.GetConnectionString("Default")!, name: "postgres")
+    .AddCheck<MinioHealthCheck>("minio");
 
 builder.Services.AddHostedService<DatabaseMigrationHostedService>();
 builder.Services.AddHostedService<MinioBootstrapHostedService>();
@@ -133,5 +137,27 @@ app.UseAuthorization();
 
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = async (ctx, report) =>
+    {
+        ctx.Response.ContentType = "application/json";
+
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(x => new
+            {
+                name = x.Key,
+                status = x.Value.Status.ToString(),
+                description = x.Value.Description
+            })
+        };
+
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
+    }
+});
 
 app.Run();

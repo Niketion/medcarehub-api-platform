@@ -88,6 +88,8 @@ services:
     working_dir: /src
     volumes:
       - ./:/src
+    environment:
+      PG_IT_CONNECTIONSTRING: Host=postgres;Port=5432;Database=postgres;Username=postgres;Password=postgres
     command: ["dotnet", "test", "tests/MedCareHub.Api.Tests/MedCareHub.Api.Tests.csproj"]
     depends_on:
       postgres:

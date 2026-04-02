@@ -47,8 +47,8 @@ public sealed class ReportsController : ControllerBase
         if (request.File is null || request.File.Length == 0)
             return BadRequest(new { error = "file is required" });
 
-        if (!IsAllowedReport(request.File))
-            return BadRequest(new { error = "Only PDF reports are allowed (.pdf, application/pdf)" });
+        if (!await IsAllowedReportAsync(request.File, ct))
+            return BadRequest(new { error = "Only PDF reports are allowed (.pdf, application/pdf, PDF header)" });
 
         var booking = await _db.Bookings
             .Include(b => b.Slot)
@@ -218,12 +218,27 @@ public sealed class ReportsController : ControllerBase
         return File(stream, contentType, fileName);
     }
 
-    private static bool IsAllowedReport(IFormFile file)
+    private static async Task<bool> IsAllowedReportAsync(IFormFile file, CancellationToken ct)
     {
         var extension = Path.GetExtension(file.FileName);
         var contentType = (file.ContentType ?? string.Empty).Trim();
 
-        return AllowedReportExtensions.Contains(extension)
-            && AllowedReportContentTypes.Contains(contentType);
+        if (!AllowedReportExtensions.Contains(extension) ||
+            !AllowedReportContentTypes.Contains(contentType))
+        {
+            return false;
+        }
+
+        await using var stream = file.OpenReadStream();
+        var header = new byte[5];
+        var read = await stream.ReadAsync(header.AsMemory(0, 5), ct);
+
+        // PDF magic header: %PDF-
+        return read == 5
+            && header[0] == 0x25
+            && header[1] == 0x50
+            && header[2] == 0x44
+            && header[3] == 0x46
+            && header[4] == 0x2D;
     }
 }

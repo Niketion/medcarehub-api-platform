@@ -2,7 +2,7 @@
 
 Full-stack API-based healthcare MVP for clinic/polyclinic workflows.
 
-<center><img src="https://i.imgur.com/8cToOyR.png" alt="Alt Text" width="550" height="430"></center>
+<center><img src="docs/assets/dashboard.png" alt="Alt Text" width="550" height="430"></center>
 
 ## Scope
 - Slot management
@@ -18,7 +18,7 @@ Full-stack API-based healthcare MVP for clinic/polyclinic workflows.
 - File storage: MinIO (S3-compatible)
 - Runtime: Docker Compose
 
-<center><img src="https://i.imgur.com/wpEdF2h.png" alt="Alt Text" width="600" height="430"></center>
+<center><img src="docs/assets/architecture.png" alt="Alt Text" width="600" height="430"></center>
 
 ## Core Features
 - RBAC: `patient`, `operator`, `doctor`, `admin`
@@ -58,6 +58,7 @@ docker compose --profile full down
 ## Demo Users
 - `patient1 / Password!23`
 - `operator1 / Password!23`
+- `doctor1 / Password!23`
 - Keycloak admin: `admin / admin`
 
 ## Main Endpoints

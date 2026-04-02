@@ -66,6 +66,24 @@
         "patient"
       ]
     },
+	  {
+	    "username": "doctor1",
+	    "enabled": true,
+	    "emailVerified": true,
+	    "firstName": "Doctor",
+	    "lastName": "One",
+	    "email": "doctor1@example.local",
+	    "credentials": [
+		  {
+		    "type": "password",
+		    "value": "Password!23",
+		    "temporary": false
+		  }
+	    ],
+	    "realmRoles": [
+		  "doctor"
+	    ]
+	  },
     {
       "username": "operator1",
       "enabled": true,

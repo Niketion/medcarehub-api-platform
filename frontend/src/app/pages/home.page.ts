@@ -30,9 +30,9 @@ import { AuthService } from '../core/auth.service';
           </div>
 
           <div style="height:10px;"></div>
-          <div class="help">
-            Suggerimento: per la demo usa <b>patient1</b> (paziente) oppure <b>operator1</b> (staff).
-          </div>
+			<div class="help">
+			  Suggerimento: per la demo usa <b>patient1</b> (paziente), <b>operator1</b> (staff) oppure <b>doctor1</b> (medico).
+			</div>
         </div>
 
         <div class="panel">
