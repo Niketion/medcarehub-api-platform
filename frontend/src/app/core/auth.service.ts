@@ -1,11 +1,17 @@
 import { Injectable, signal } from '@angular/core';
-import Keycloak, { KeycloakProfile } from 'keycloak-js';
+import Keycloak from 'keycloak-js';
 import { ConfigService } from './config.service';
 
 type ProfileLite = {
   sub?: string;
   preferred_username?: string;
   email?: string;
+};
+
+type KeycloakProfileLike = {
+  username?: string;
+  email?: string;
+  [key: string]: unknown;
 };
 
 @Injectable({ providedIn: 'root' })
@@ -77,10 +83,10 @@ export class AuthService {
 
   private async loadProfile(): Promise<void> {
     try {
-      const p: KeycloakProfile = await this.kc!.loadUserProfile();
+      const p = await this.kc!.loadUserProfile() as KeycloakProfileLike;
       this._profile.set({
         sub: this.kc!.subject,
-        preferred_username: (p as any).username ?? undefined,
+        preferred_username: p.username ?? undefined,
         email: p.email ?? undefined
       });
     } catch {
