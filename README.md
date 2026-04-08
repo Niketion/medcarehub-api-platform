@@ -2,7 +2,7 @@
 
 Full-stack API-based healthcare MVP for clinic/polyclinic workflows.
 
-<center><img src="docs/assets/dashboard.png" alt="Alt Text" width="550" height="430"></center>
+<center><img src="docs/assets/dashboard.png" alt="Dashboard" width="520" height="430"></center>
 
 ## Scope
 - Slot management
@@ -18,7 +18,7 @@ Full-stack API-based healthcare MVP for clinic/polyclinic workflows.
 - File storage: MinIO (S3-compatible)
 - Runtime: Docker Compose
 
-<center><img src="docs/assets/architecture.png" alt="Alt Text" width="600" height="430"></center>
+<center><img src="docs/assets/architecture.png" alt="Architecture" width="550" height="430"></center>
 
 ## Core Features
 - RBAC: `patient`, `operator`, `doctor`, `admin`
@@ -29,7 +29,8 @@ Full-stack API-based healthcare MVP for clinic/polyclinic workflows.
 - Audit logging for relevant operations
 - Economic tracking with `BasePrice`, `BookedPrice`, `PaymentStatus`, `PaidAt`
 - Staff dashboard with operational and economic KPIs
-- Backend unit tests
+- Backend tests on API, services, auth and PostgreSQL booking consistency
+- Frontend unit tests with Jest for guards, API client and core UI behavior
 
 ## Services
 - Web: `http://localhost:4200`
@@ -97,9 +98,34 @@ npm start
 ```
 
 ## Tests
+### Backend
 ```bash
 dotnet test tests/MedCareHub.Api.Tests/MedCareHub.Api.Tests.csproj
 ```
+
+### Frontend
+```bash
+cd frontend
+npm install
+npm test
+```
+
+### Frontend CI-style execution
+```bash
+cd frontend
+npm ci
+npm run test:ci
+```
+
+## Frontend Test Coverage
+Current frontend unit tests cover:
+- `AuthGuard`
+- `RoleGuard`
+- `ApiClient`
+- `AppComponent`
+- `BookingsPageComponent`
+
+Frontend tests are implemented with Jest and `jest-preset-angular`, with a mock for `keycloak-js` to keep unit tests isolated from the real identity provider adapter.
 
 ## Notes
 This project is intended for academic/demo use, not production deployment without further hardening, monitoring, and compliance work.
